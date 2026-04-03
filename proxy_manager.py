@@ -2,6 +2,8 @@ import os
 import secrets
 import subprocess
 import re
+import time
+
 from config import CONFIG_PATH, DOMAIN, PORT, SERVER_IP, CONTAINER_NAME
 import db
 
@@ -51,8 +53,13 @@ def load_users():
 def save_users(users_dict):
     _write_config(users_dict)
     try:
-        subprocess.run(["docker", "kill", "-s", "USR2", CONTAINER_NAME], capture_output=True, check=True)
-    except:
+        subprocess.run(
+            ["docker", "exec", CONTAINER_NAME, "kill", "-USR2", "1"],
+            capture_output=True,
+            check=True
+        )
+        time.sleep(1)
+    except subprocess.CalledProcessError as e:
         subprocess.run(["docker", "restart", CONTAINER_NAME], capture_output=True)
 
 
