@@ -55,13 +55,11 @@ def save_users(users_dict):
 
     try:
         subprocess.run(
-            ["docker", "exec", CONTAINER_NAME, "python3", "-c",
-             "import mtprotoproxy; mtprotoproxy.reload_config()"],
+            ["docker", "exec", "mtprotoproxy", "python3", "/home/tgproxy/mtprotoproxy.py", "--reload"],
             capture_output=True,
-            check=True,
-            timeout=5
+            check=True
         )
-        print(f"Конфигурация для {CONTAINER_NAME} перезагружена через exec.")
+        print(f"Конфигурация для {CONTAINER_NAME} перезагружена через reload.")
     except subprocess.CalledProcessError as e:
         print(f"exec не удался: {e}. Пробуем SIGUSR2...")
         try:
