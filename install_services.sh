@@ -8,8 +8,12 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Значения по умолчанию
-PROJECT_DIR="/root/mtproto_bot"
+# Определяем директорию, где находится сам скрипт
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Если PROJECT_DIR не задан через окружение, используем директорию скрипта
+PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
+
 BOT_SCRIPT="main.py"
 WEB_SCRIPT="web_admin.py"
 BOT_SERVICE_NAME="mtproto-bot"
@@ -40,7 +44,7 @@ show_help() {
     $0 --all           # установить оба сервиса
 
 Переменные окружения (можно задать перед запуском):
-    PROJECT_DIR        путь к проекту (по умолчанию: /root/mtproto_bot)
+    PROJECT_DIR        путь к проекту (по умолчанию: директория скрипта)
     USER               пользователь для запуска (по умолчанию: root)
     GROUP              группа (по умолчанию: root)
 
