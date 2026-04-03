@@ -194,7 +194,7 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = "\n".join(message_lines)
     message_text += "\n\n<i>Чтобы отозвать ключ, используйте команду:</i>\n"
     message_text += "<code>/revoke u_name</code>\n"
-    message_text += "Например: <code>/revoke u_937383965_398697</code>"
+    message_text += "Например: <code>/revoke u_111111111_000000</code>"
 
     await update.message.reply_text(message_text, parse_mode="HTML")
 
