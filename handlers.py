@@ -180,7 +180,6 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     message_lines = ["<b>📋 Список пользователей:</b>\n"]
-    keyboard_buttons = []
     for uname, tid, created in users:
         if tid != 'unknown':
             try:
@@ -191,11 +190,13 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             tg_uname = "unknown"
         message_lines.append(f"• <code>{escape_html(uname)}</code> — {escape_html(str(tg_uname))} (с {created[:10]})")
-        keyboard_buttons.append([InlineKeyboardButton(f"❌ Отозвать {uname}", callback_data=f"revoke_{uname}")])
 
     message_text = "\n".join(message_lines)
-    keyboard = InlineKeyboardMarkup(keyboard_buttons) if keyboard_buttons else None
-    await update.message.reply_text(message_text, parse_mode="HTML", reply_markup=keyboard)
+    message_text += "\n\n<i>Чтобы отозвать ключ, используйте команду:</i>\n"
+    message_text += "<code>/revoke u_name</code>\n"
+    message_text += "Например: <code>/revoke u_937383965_398697</code>"
+
+    await update.message.reply_text(message_text, parse_mode="HTML")
 
 
 async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
