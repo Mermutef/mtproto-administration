@@ -89,7 +89,7 @@ def make_link(secret):
 @app.route("/", methods=["GET", "POST"])
 def admin():
     auth = request.authorization
-    if not auth or auth.password != ADMIN_PASSWORD:
+    if not auth or auth.username != "admin" or auth.password != ADMIN_PASSWORD:
         return "Unauthorized", 401, {"WWW-Authenticate": 'Basic realm="Admin"'}
 
     if request.method == "POST":
