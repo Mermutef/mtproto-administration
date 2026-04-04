@@ -100,27 +100,26 @@ config = {}
 
 def init_config():
     global config
-    # Убираем аргумент --reload из списка, если он есть
-    args = [arg for arg in sys.argv[1:] if arg != '--reload']
-
     # we use conf_dict to protect the original config from exceptions when reloading
-    if len(args) == 0:
+    if len(sys.argv) < 2:
         conf_dict = runpy.run_module("config")
-    elif len(args) == 1:
+    elif len(sys.argv) == 2:
         # launch with own config
-        conf_dict = runpy.run_path(args[0])
+        conf_dict = runpy.run_path(sys.argv[1])
     else:
         # undocumented way of launching
         conf_dict = {}
-        conf_dict["PORT"] = int(args[0])
-        secrets = args[1].split(",")
+        conf_dict["PORT"] = int(sys.argv[1])
+        secrets = sys.argv[2].split(",")
         conf_dict["USERS"] = {"user%d" % i: secrets[i].zfill(32) for i in range(len(secrets))}
         conf_dict["MODES"] = {"classic": False, "secure": True, "tls": True}
-        if len(args) > 2:
-            conf_dict["AD_TAG"] = args[2]
-        if len(args) > 3:
-            conf_dict["TLS_DOMAIN"] = args[3]
+        if len(sys.argv) > 3:
+            conf_dict["AD_TAG"] = sys.argv[3]
+        if len(sys.argv) > 4:
+            conf_dict["TLS_DOMAIN"] = sys.argv[4]
             conf_dict["MODES"] = {"classic": False, "secure": False, "tls": True}
+
+    conf_dict = {k: v for k, v in conf_dict.items() if k.isupper()}
 
     conf_dict.setdefault("PORT", 3256)
     conf_dict.setdefault("USERS", {"tg":  "00000000000000000000000000000000"})
@@ -129,16 +128,26 @@ def init_config():
     for user, secret in conf_dict["USERS"].items():
         if not re.fullmatch("[0-9a-fA-F]{32}", secret):
             fixed_secret = re.sub(r"[^0-9a-fA-F]", "", secret).zfill(32)[:32]
+
             print_err("Bad secret for user %s, should be 32 hex chars, got %s. " % (user, secret))
             print_err("Changing it to %s" % fixed_secret)
+
             conf_dict["USERS"][user] = fixed_secret
 
     # load advanced settings
+
+    # use middle proxy, necessary to show ad
     conf_dict.setdefault("USE_MIDDLE_PROXY", len(conf_dict["AD_TAG"]) == 16)
+
+    # if IPv6 available, use it by default, IPv6 with middle proxies is unstable now
     conf_dict.setdefault("PREFER_IPV6", socket.has_ipv6 and not conf_dict["USE_MIDDLE_PROXY"])
+
+    # disables tg->client traffic reencryption, faster but less secure
     conf_dict.setdefault("FAST_MODE", True)
 
+    # enables some working modes
     modes = conf_dict.get("MODES", {})
+
     if "MODES" not in conf_dict:
         modes.setdefault("classic", True)
         modes.setdefault("secure", True)
@@ -152,14 +161,17 @@ def init_config():
     if "SECURE_ONLY" in conf_dict:
         legacy_warning = True
         modes["classic"] = not bool(conf_dict["SECURE_ONLY"])
+
     if "TLS_ONLY" in conf_dict:
         legacy_warning = True
         if conf_dict["TLS_ONLY"]:
             modes["classic"] = False
             modes["secure"] = False
+
     if not modes["classic"] and not modes["secure"] and not modes["tls"]:
         print_err("No known modes enabled, enabling tls-only mode")
         modes["tls"] = True
+
     if legacy_warning:
         print_err("Legacy options SECURE_ONLY or TLS_ONLY detected")
         print_err("Please use MODES in your config instead:")
@@ -171,47 +183,115 @@ def init_config():
 
     conf_dict["MODES"] = modes
 
+    # accept incoming connections only with proxy protocol v1/v2, useful for nginx and haproxy
     conf_dict.setdefault("PROXY_PROTOCOL", False)
+
+    # set the tls domain for the proxy, has an influence only on starting message
     conf_dict.setdefault("TLS_DOMAIN", "www.google.com")
+
+    # enable proxying bad clients to some host
     conf_dict.setdefault("MASK", True)
+
+    # the next host to forward bad clients
     conf_dict.setdefault("MASK_HOST", conf_dict["TLS_DOMAIN"])
+
+    # set the home domain for the proxy, has an influence only on the log message
     conf_dict.setdefault("MY_DOMAIN", False)
+
+    # the next host's port to forward bad clients
     conf_dict.setdefault("MASK_PORT", 443)
+
+    # use upstream SOCKS5 proxy
     conf_dict.setdefault("SOCKS5_HOST", None)
     conf_dict.setdefault("SOCKS5_PORT", None)
     conf_dict.setdefault("SOCKS5_USER", None)
     conf_dict.setdefault("SOCKS5_PASS", None)
+
     if conf_dict["SOCKS5_HOST"] and conf_dict["SOCKS5_PORT"]:
+        # Disable the middle proxy if using socks, they are not compatible
         conf_dict["USE_MIDDLE_PROXY"] = False
 
+    # user tcp connection limits, the mapping from name to the integer limit
+    # one client can create many tcp connections, up to 8
     conf_dict.setdefault("USER_MAX_TCP_CONNS", {})
+
+    # expiration date for users in format of day/month/year
     conf_dict.setdefault("USER_EXPIRATIONS", {})
     for user in conf_dict["USER_EXPIRATIONS"]:
         expiration = datetime.datetime.strptime(conf_dict["USER_EXPIRATIONS"][user], "%d/%m/%Y")
         conf_dict["USER_EXPIRATIONS"][user] = expiration
+
+    # the data quota for user
     conf_dict.setdefault("USER_DATA_QUOTA", {})
+
+    # length of used handshake randoms for active fingerprinting protection, zero to disable
     conf_dict.setdefault("REPLAY_CHECK_LEN", 65536)
+
+    # accept clients with bad clocks. This reduces the protection against replay attacks
     conf_dict.setdefault("IGNORE_TIME_SKEW", False)
+
+    # length of last client ip addresses for logging
     conf_dict.setdefault("CLIENT_IPS_LEN", 131072)
+
+    # delay in seconds between stats printing
     conf_dict.setdefault("STATS_PRINT_PERIOD", 600)
+
+    # delay in seconds between middle proxy info updates
     conf_dict.setdefault("PROXY_INFO_UPDATE_PERIOD", 24*60*60)
+
+    # delay in seconds between time getting, zero means disabled
     conf_dict.setdefault("GET_TIME_PERIOD", 10*60)
+
+    # delay in seconds between getting the length of certificate on the mask host
     conf_dict.setdefault("GET_CERT_LEN_PERIOD", random.randrange(4*60*60, 6*60*60))
+
+    # max socket buffer size to the client direction, the more the faster, but more RAM hungry
+    # can be the tuple (low, users_margin, high) for the adaptive case. If no much users, use high
     conf_dict.setdefault("TO_CLT_BUFSIZE", (16384, 100, 131072))
+
+    # max socket buffer size to the telegram servers direction, also can be the tuple
     conf_dict.setdefault("TO_TG_BUFSIZE", 65536)
+
+    # keepalive period for clients in secs
     conf_dict.setdefault("CLIENT_KEEPALIVE", 10*60)
+
+    # drop client after this timeout if the handshake fail
     conf_dict.setdefault("CLIENT_HANDSHAKE_TIMEOUT", random.randrange(5, 15))
+
+    # if client doesn't confirm data for this number of seconds, it is dropped
     conf_dict.setdefault("CLIENT_ACK_TIMEOUT", 5*60)
+
+    # telegram servers connect timeout in seconds
     conf_dict.setdefault("TG_CONNECT_TIMEOUT", 10)
+
+    # drop connection if no data from telegram server for this many seconds
     conf_dict.setdefault("TG_READ_TIMEOUT", 60)
+
+    # listen address for IPv4
     conf_dict.setdefault("LISTEN_ADDR_IPV4", "0.0.0.0")
+
+    # listen address for IPv6
     conf_dict.setdefault("LISTEN_ADDR_IPV6", "::")
+
+    # listen unix socket
     conf_dict.setdefault("LISTEN_UNIX_SOCK", "")
+
+    # prometheus exporter listen port, use some random port here
     conf_dict.setdefault("METRICS_PORT", None)
+
+    # prometheus listen addr ipv4
     conf_dict.setdefault("METRICS_LISTEN_ADDR_IPV4", "0.0.0.0")
+
+    # prometheus listen addr ipv6
     conf_dict.setdefault("METRICS_LISTEN_ADDR_IPV6", None)
+
+    # prometheus scrapers whitelist
     conf_dict.setdefault("METRICS_WHITELIST", ["127.0.0.1", "::1"])
+
+    # export proxy link to prometheus
     conf_dict.setdefault("METRICS_EXPORT_LINKS", False)
+
+    # default prefix for metrics
     conf_dict.setdefault("METRICS_PREFIX", "mtprotoproxy_")
 
     # allow access to config by attributes
@@ -2322,15 +2402,5 @@ def main():
     loop.close()
 
 
-def reload_config():
-    init_config()
-    ensure_users_in_user_stats()
-    apply_upstream_proxy_settings()
-    print("Config reloaded via reload_config()", flush=True, file=sys.stderr)
-    print_tg_info()
-
 if __name__ == "__main__":
-    if len(sys.argv) == 2 and sys.argv[1] == "--reload":
-        reload_config()
-        sys.exit(0)
     main()

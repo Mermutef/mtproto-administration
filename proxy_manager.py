@@ -42,8 +42,11 @@ def _write_config(users_dict):
     for name, secret in users_dict.items():
         users_str += f'    "{name}": "{secret}",\n'
     users_str += "}\n"
-    with open(CONFIG_PATH, 'w') as f:
-        f.write(header + "\n" + users_str)
+    content = header + "\n" + users_str
+
+    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_TRUNC)
+    with os.fdopen(fd, 'w') as f:
+        f.write(content)
 
 
 def load_users():
@@ -54,24 +57,9 @@ def save_users(users_dict):
     _write_config(users_dict)  # 1. Сохраняем настройки
 
     try:
-        subprocess.run(
-            ["docker", "exec", "mtprotoproxy", "python3", "/home/tgproxy/mtprotoproxy.py", "--reload"],
-            capture_output=True,
-            check=True
-        )
-        print(f"Конфигурация для {CONTAINER_NAME} перезагружена через reload.")
+        subprocess.run(["docker", "exec", CONTAINER_NAME, "kill", "-USR2", "1"], check=True)
     except subprocess.CalledProcessError as e:
-        print(f"exec не удался: {e}. Пробуем SIGUSR2...")
-        try:
-            subprocess.run(
-                ["docker", "kill", "-s", "USR2", CONTAINER_NAME],
-                capture_output=True,
-                check=True
-            )
-            print("Сигнал USR2 отправлен.")
-        except subprocess.CalledProcessError:
-            print("Сигнал не сработал, перезапускаем контейнер.")
-            subprocess.run(["docker", "restart", CONTAINER_NAME], capture_output=True)
+        subprocess.run(["docker", "restart", CONTAINER_NAME], capture_output=True)
 
 
 def add_user(username, secret):
