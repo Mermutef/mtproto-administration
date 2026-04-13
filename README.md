@@ -11,27 +11,39 @@ Fake TLS.
 
 ---
 
-## 📦 Состав проекта
-
 ```
-.
-├── config.py              # Загрузка переменных окружения
-├── db.py                  # Работа с SQLite (пользователи, заявки)
-├── handlers.py            # Обработчики команд Telegram бота
-├── install_services.sh    # Скрипт установки systemd сервисов
-├── main.py                # Точка входа Telegram бота
-├── proxy_manager.py       # Управление конфигом прокси (config.py) и синхронизация
-├── uninstall_services.sh  # Скрипт удаления systemd сервисов
-├── utils.py               # Вспомогательные функции (экранирование HTML)
-├── web_admin.py           # Веб-админка на Flask
-└── .env.example           # Пример файла с переменными окружения
+## 📦 Состав проекта
+/root/mtproto_bot/
+├── .env                     # переменные окружения
+├── requirements.txt         # зависимости Python
+├── main.py                  # точка входа Telegram бота
+├── web_admin.py             # точка входа веб-админки Flask
+├── install_services.sh      # установка systemd сервисов
+├── uninstall_services.sh    # удаление systemd сервисов
+├── README.md                # этот файл
+├── app/                     # основной пакет приложения
+│   ├── __init__.py
+│   ├── config.py            # загрузка переменных окружения
+│   ├── db.py                # работа с SQLite (пользователи, заявки)
+│   ├── proxy_manager.py     # управление конфигом прокси (config.py) и синхронизация
+│   ├── utils.py             # вспомогательные функции (экранирование HTML)
+│   ├── handlers/            # обработчики команд Telegram бота
+│   │   ├── __init__.py
+│   │   ├── user_handlers.py    # команды пользователей
+│   │   ├── admin_handlers.py   # административные команды
+│   │   └── callback_handlers.py # обработка inline-кнопок
+│   ├── templates/           # HTML-шаблоны веб-админки (Jinja2)
+│   │   ├── admin.html
+│   │   └── edit_user.html
+│   └── locales/             # локализация сообщений бота
+│       └── ru.py            # русские тексты
 ```
 
 ---
 
 ## ⚙️ Требования
 
-- **Python 3.8+**
+- **Python 3.13+**
 - **Docker** (для запуска прокси `alexbers/mtprotoproxy`)
 - **Git** (для клонирования репозитория прокси)
 
@@ -46,7 +58,7 @@ git clone -b stable https://github.com/alexbers/mtprotoproxy.git /root/mtprotopr
 cd /root/mtprotoproxy
 # Отредактируйте config.py (укажите PORT, USERS, MODES, TLS_DOMAIN)
 nano config.py
-docker run -d --name mtproto-proxy --restart unless-stopped -p PORT:PORT -v $(pwd)/config.py:/app/config.py:ro alexbers/mtprotoproxy:latest
+docker run -d --name mtprotoproxy --restart unless-stopped -p PORT:PORT -v $(pwd)/config.py:/app/config.py:ro alexbers/mtprotoproxy:latest
 ```
 
 > **Примечание**: Прокси можно запустить и без Docker, но с Docker проще.
@@ -86,7 +98,7 @@ nano .env
 ### 4. Установите Python зависимости
 
 ```bash
-pip install python-telegram-bot python-dotenv flask
+pip install -r requirements.txt
 ```
 
 ### 5. Инициализируйте базу данных
@@ -158,7 +170,7 @@ chmod +x uninstall_services.sh
 
 - `/start` – панель администратора
 - `/adduser @username` – выдать ключ пользователю (бот отправит ссылку в ЛС)
-- `/users` – список всех пользователей с кнопками отзыва
+- `/users` – список всех пользователей с инструкцией по отзыву
 - `/revoke @username` – отозвать ключ пользователя
 
 ### Процесс выдачи ключа через заявку
@@ -181,6 +193,11 @@ chmod +x uninstall_services.sh
 - Просмотр списка пользователей (логин, секрет, Telegram ID, ссылка)
 - Добавление нового пользователя (логин задаётся вручную)
 - Удаление пользователя
+- Переименование пользователя
+- Перезапуск контейнера прокси
+- Перезагрузка сервера
+- Отправка массовой рассылки всем пользователям
+- Отправка личного сообщения конкретному пользователю
 
 Все изменения немедленно применяются к прокси (отправляется сигнал `SIGUSR2` контейнеру).
 
@@ -201,7 +218,7 @@ chmod +x uninstall_services.sh
 - `request_id` – автоинкремент
 - `user_id` – Telegram ID заявителя
 - `user_name` – имя пользователя
-- `status` – `pending` / `approved` / `rejected`
+- `status` – `pending` / `approved` / `rejected` / `revoked`
 - `created_at` – дата заявки
 
 ---

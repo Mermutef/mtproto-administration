@@ -1,8 +1,8 @@
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-from config import TOKEN, ADMIN_GROUP_ID
-import db
-import proxy_manager
-from handlers import (
+from app.config import TOKEN, ADMIN_GROUP_ID
+import app.db as db
+import app.proxy_manager as proxy_manager
+from app.handlers import (
     start, request_key, status_command, cancel_command,
     start_admin, adduser_command, users_command, revoke_command,
     button_callback, unknown
@@ -11,7 +11,6 @@ from handlers import (
 
 def main():
     db.init_db()
-    # Синхронизируем БД с текущими пользователями из конфига прокси
     proxy_manager.sync_all_users()
 
     app = Application.builder().token(TOKEN).build()

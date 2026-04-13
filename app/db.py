@@ -1,6 +1,6 @@
 import sqlite3
 from datetime import datetime
-from config import DB_PATH
+from app.config import DB_PATH
 
 
 def init_db():
@@ -89,10 +89,7 @@ def get_user_requests(user_id):
 
 
 def sync_db_with_proxy(proxy_users):
-    """
-    proxy_users: dict {username: secret}
-    Добавляет в БД всех пользователей, которые есть в прокси, но отсутствуют в БД.
-    """
+    """Добавляет в БД пользователей из прокси, которых ещё нет в БД."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     for username in proxy_users:
@@ -102,3 +99,23 @@ def sync_db_with_proxy(proxy_users):
                       (username, 'unknown', datetime.now().isoformat()))
     conn.commit()
     conn.close()
+
+
+def revoke_user_requests(telegram_id):
+    """Переводит все одобренные заявки пользователя в статус 'revoked'."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE requests SET status = 'revoked' WHERE user_id = ? AND status = 'approved'",
+              (str(telegram_id),))
+    conn.commit()
+    conn.close()
+
+
+def get_all_users_with_telegram():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT username, telegram_id FROM users WHERE telegram_id NOT IN ('unknown', 'web') AND telegram_id != '—'")
+    rows = c.fetchall()
+    conn.close()
+    return rows

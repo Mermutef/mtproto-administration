@@ -1,11 +1,10 @@
 import os
 import secrets
+import sqlite3
 import subprocess
 import re
-import time
-
-from config import CONFIG_PATH, DOMAIN, PORT, SERVER_IP, CONTAINER_NAME
-import db
+from app.config import CONFIG_PATH, DOMAIN, PORT, SERVER_IP, CONTAINER_NAME
+import app.db as db
 
 TEMPLATE_HEAD = '''# MTProto Proxy configuration
 PORT = {port}
@@ -43,7 +42,6 @@ def _write_config(users_dict):
         users_str += f'    "{name}": "{secret}",\n'
     users_str += "}\n"
     content = header + "\n" + users_str
-
     fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_TRUNC)
     with os.fdopen(fd, 'w') as f:
         f.write(content)
@@ -54,11 +52,10 @@ def load_users():
 
 
 def save_users(users_dict):
-    _write_config(users_dict)  # 1. Сохраняем настройки
-
+    _write_config(users_dict)
     try:
         subprocess.run(["docker", "exec", CONTAINER_NAME, "kill", "-USR2", "1"], check=True)
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         subprocess.run(["docker", "restart", CONTAINER_NAME], capture_output=True)
 
 
@@ -96,7 +93,6 @@ def get_proxy_link(secret):
 
 
 def create_user(username, telegram_id="unknown"):
-    """Создаёт пользователя: добавляет в конфиг и в БД. Возвращает (success, link_or_error)"""
     if username in load_users():
         return False, "User already exists"
     secret = secrets.token_hex(16)
@@ -108,14 +104,19 @@ def create_user(username, telegram_id="unknown"):
 
 
 def delete_user(username):
-    """Удаляет пользователя: из конфига и из БД"""
     if remove_user(username):
+        conn = sqlite3.connect(db.DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT telegram_id FROM users WHERE username = ?", (username,))
+        row = c.fetchone()
+        conn.close()
+        if row and row[0] not in ('unknown', 'web'):
+            db.revoke_user_requests(row[0])
         db.remove_user_from_db(username)
         return True
     return False
 
 
 def sync_all_users():
-    """Синхронизирует БД с конфигом прокси"""
     proxy_users = load_users()
     db.sync_db_with_proxy(proxy_users)
