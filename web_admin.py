@@ -5,9 +5,8 @@ import threading
 import time
 import requests
 import subprocess
-from datetime import datetime
 from flask import Flask, request, render_template, jsonify
-from app.config import ADMIN_PASSWORD, FLASK_PORT, DB_PATH, TOKEN
+from app.config import MTPROXYMAX_SERVICE, DOMAIN, PORT, SERVER_IP, ADMIN_PASSWORD, FLASK_PORT, DB_PATH, TOKEN
 import app.proxy_manager as proxy_manager
 import app.db as db
 
@@ -111,20 +110,10 @@ def api_rename_user():
         return jsonify({"error": f"Пользователь '{new_name}' уже существует"}), 400
     if old_name not in users:
         return jsonify({"error": f"Пользователь '{old_name}' не найден"}), 404
-    secret = users[old_name]
-    new_users = {}
-    for k, v in users.items():
-        if k == old_name:
-            new_users[new_name] = v
-        else:
-            new_users[k] = v
-    proxy_manager.save_users(new_users)
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("UPDATE users SET username = ? WHERE username = ?", (new_name, old_name))
-    conn.commit()
-    conn.close()
-    return jsonify({"success": True, "message": f"Пользователь переименован в '{new_name}'"})
+    if proxy_manager.rename_user(old_name, new_name):
+        return jsonify({"success": True, "message": f"Пользователь переименован в '{new_name}'"})
+    else:
+        return jsonify({"error": "Ошибка при переименовании"}), 500
 
 
 @app.route("/api/broadcast", methods=["POST"])
@@ -179,8 +168,11 @@ def api_send_to():
 def api_restart_container():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
-    subprocess.run(["docker", "restart", proxy_manager.CONTAINER_NAME], capture_output=True)
-    return jsonify({"success": True, "message": "Контейнер перезапущен"})
+    result = subprocess.run(["systemctl", "restart", MTPROXYMAX_SERVICE], capture_output=True, text=True)
+    if result.returncode == 0:
+        return jsonify({"success": True, "message": f"Сервис {MTPROXYMAX_SERVICE} перезапущен"})
+    else:
+        return jsonify({"error": f"Ошибка перезапуска: {result.stderr}"}), 500
 
 
 @app.route("/api/restart_server", methods=["POST"])
@@ -193,9 +185,8 @@ def api_restart_server():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print(f"Proxy config: {proxy_manager.CONFIG_PATH}")
-    print(f"Container: {proxy_manager.CONTAINER_NAME}")
-    print(f"Domain: {proxy_manager.DOMAIN}, Port: {proxy_manager.PORT}, IP: {proxy_manager.SERVER_IP}")
+    print(f"Service name: {MTPROXYMAX_SERVICE}")
+    print(f"Domain: {DOMAIN}, Port: {PORT}, IP: {SERVER_IP}")
     print(f"Admin password: {ADMIN_PASSWORD}")
     print(f"Starting web admin on http://0.0.0.0:{FLASK_PORT}")
     print("=" * 50)

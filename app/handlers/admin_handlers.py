@@ -7,6 +7,7 @@ from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
 
+
 async def start_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
@@ -14,6 +15,7 @@ async def start_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     await update.message.reply_text(MESSAGES["admin_start"], parse_mode="HTML")
+
 
 async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID:
@@ -24,32 +26,58 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(MESSAGES["adduser_usage"])
         return
-    username = context.args[0].lstrip('@')
-    try:
-        chat = await context.bot.get_chat(f"@{username}")
-        user_id = chat.id
-    except:
-        await update.message.reply_text(MESSAGES["user_not_found"].format(username=username))
-        return
-    existing = db.get_user_by_telegram_id(user_id)
-    if existing:
-        await update.message.reply_text(
-            MESSAGES["user_already_has_key"].format(tg_username=username, username=escape_html(existing)),
-            parse_mode="HTML"
-        )
-        return
-    proxy_username = proxy_manager.generate_unique_username(f"u_{user_id}")
-    success, link = proxy_manager.create_user(proxy_username, telegram_id=str(user_id))
-    if success:
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=MESSAGES["admin_key_granted"].format(
-                username=escape_html(proxy_username), link=link),
-            parse_mode="HTML"
-        )
-        await update.message.reply_text(MESSAGES["key_created_sent"].format(username=username))
+
+    arg = context.args[0]
+
+    if arg.startswith('@'):
+        username = arg.lstrip('@')
+        try:
+            chat = await context.bot.get_chat(f"@{username}")
+            user_id = chat.id
+        except:
+            await update.message.reply_text(MESSAGES["user_not_found"].format(username=username))
+            return
+
+        existing = db.get_user_by_telegram_id(user_id)
+        if existing:
+            await update.message.reply_text(
+                MESSAGES["user_already_has_key"].format(tg_username=username, username=escape_html(existing)),
+                parse_mode="HTML"
+            )
+            return
+
+        proxy_username = proxy_manager.generate_unique_username(f"u_{user_id}")
+        success, link = proxy_manager.create_user(proxy_username, telegram_id=str(user_id))
+        if success:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text=MESSAGES["admin_key_granted"].format(
+                    username=escape_html(proxy_username), link=link),
+                parse_mode="HTML"
+            )
+            await update.message.reply_text(MESSAGES["key_created_sent"].format(username=username))
+        else:
+            await update.message.reply_text(MESSAGES["key_created_error"].format(error=link))
+
     else:
-        await update.message.reply_text(MESSAGES["key_created_error"].format(error=link))
+        proxy_username = arg.strip()
+        if not proxy_username:
+            await update.message.reply_text("❌ Логин не может быть пустым.")
+            return
+
+        # Проверяем, не занят ли логин
+        if proxy_username in proxy_manager.load_users():
+            await update.message.reply_text(f"❌ Логин '{proxy_username}' уже существует.")
+            return
+
+        success, link = proxy_manager.create_user(proxy_username, telegram_id="web")
+        if success:
+            await update.message.reply_text(
+                f"✅ Пользователь '{proxy_username}' добавлен.\nСсылка: {link}"
+            )
+        else:
+            await update.message.reply_text(f"❌ Ошибка: {link}")
+
 
 async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID:
@@ -81,6 +109,7 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_lines.append(MESSAGES["users_list_footer"])
     message_text = "\n".join(message_lines)
     await update.message.reply_text(message_text, parse_mode="HTML")
+
 
 async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.id != ADMIN_GROUP_ID:

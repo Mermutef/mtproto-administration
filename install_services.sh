@@ -160,7 +160,7 @@ EOF
 
 # Устанавливаем бота
 if [ "$INSTALL_BOT" = true ]; then
-    install_service "$BOT_SERVICE_NAME" "$BOT_SCRIPT" "MTProto Telegram Bot" "network.target docker.service" "Requires=docker.service"
+    install_service "$BOT_SERVICE_NAME" "$BOT_SCRIPT" "MTProto Telegram Bot" "network.target" ""
 fi
 
 # Устанавливаем веб-админку

@@ -7,7 +7,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (username TEXT PRIMARY KEY, telegram_id TEXT, created_at TEXT)''')
+                 (username TEXT PRIMARY KEY, telegram_id TEXT, secret TEXT, created_at TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS requests
                  (request_id INTEGER PRIMARY KEY AUTOINCREMENT,
                   user_id TEXT, user_name TEXT, status TEXT, created_at TEXT)''')
@@ -15,11 +15,11 @@ def init_db():
     conn.close()
 
 
-def add_user_to_db(username, telegram_id):
+def add_user_to_db(username, telegram_id, secret):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO users (username, telegram_id, created_at) VALUES (?, ?, ?)",
-              (username, str(telegram_id), datetime.now().isoformat()))
+    c.execute("INSERT OR REPLACE INTO users (username, telegram_id, secret, created_at) VALUES (?, ?, ?, ?)",
+              (username, str(telegram_id), secret, datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
@@ -89,20 +89,22 @@ def get_user_requests(user_id):
 
 
 def sync_db_with_proxy(proxy_users):
-    """Добавляет в БД пользователей из прокси, которых ещё нет в БД."""
+    """
+    proxy_users: dict {username: secret}
+    Добавляет в БД всех пользователей из прокси, которых ещё нет в БД.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    for username in proxy_users:
+    for username, secret in proxy_users.items():
         c.execute("SELECT 1 FROM users WHERE username = ?", (username,))
         if not c.fetchone():
-            c.execute("INSERT INTO users (username, telegram_id, created_at) VALUES (?, ?, ?)",
-                      (username, 'unknown', datetime.now().isoformat()))
+            c.execute("INSERT INTO users (username, telegram_id, secret, created_at) VALUES (?, ?, ?, ?)",
+                      (username, 'unknown', secret, datetime.now().isoformat()))
     conn.commit()
     conn.close()
 
 
 def revoke_user_requests(telegram_id):
-    """Переводит все одобренные заявки пользователя в статус 'revoked'."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE requests SET status = 'revoked' WHERE user_id = ? AND status = 'approved'",
