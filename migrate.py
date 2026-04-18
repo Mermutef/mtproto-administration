@@ -1,43 +1,81 @@
 #!/usr/bin/env python3
 import sqlite3
+import requests
+import time
+import sys
+from pathlib import Path
 
-DB_PATH = "/root/mtproto_bot.db"
-SECRETS_CONF = "/opt/mtproxymax/secrets.conf"
+# Добавляем путь к проекту для импорта из app.config
+sys.path.insert(0, str(Path(__file__).parent))
+
+from app.config import TOKEN, DB_PATH, DOMAIN, SERVER, PORT
+
+DOMAIN_HEX = DOMAIN.encode().hex()
+
+
+def get_all_users_with_secret():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT username, telegram_id, secret 
+        FROM users 
+        WHERE telegram_id NOT IN ('unknown', 'web', '—') 
+          AND secret IS NOT NULL
+    """)
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+def send_message(chat_id, text):
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    data = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        r = requests.post(url, data=data, timeout=10)
+        return r.ok
+    except Exception as e:
+        print(f"❌ Ошибка отправки для {chat_id}: {e}")
+        return False
 
 
 def main():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN secret TEXT")
-        print("Added column 'secret'")
-    except sqlite3.OperationalError as e:
-        if "duplicate column name" in str(e):
-            print("Column 'secret' already exists")
+    users = get_all_users_with_secret()
+    total = len(users)
+    print(f"Найдено пользователей: {total}")
+    success = 0
+
+    for username, tid, secret in users:
+        full_secret = f"ee{secret}{DOMAIN_HEX}"
+        link = f"tg://proxy?server={SERVER}&port={PORT}&secret={full_secret}"
+
+        message = (
+            f"🔐 <b>Обновление подключения к Telegram</b>\n\n"
+            f"Уважаемые пользователи!\n\n"
+            f"В связи с усилением блокировок был обновлен прокси-сервер. "
+            f"Новая конфигурация должна обеспечивать более стабильную работу и лучшую защиту от ограничений.\n\n"
+            f"<b>Для перехода на новое подключение:</b>\n"
+            f"1. Нажмите на ссылку ниже:\n"
+            f"{link}\n"
+            f"2. В открывшемся окне Telegram нажмите «Подключить прокси» (или «Connect proxy»).\n"
+            f"3. Готово — новое соединение активируется автоматически.\n\n"
+            f"Если возникнут вопросы — просто свяжитесь с тем, кто изначально предоставил вам доступ к сервису."
+        )
+
+        if send_message(tid, message):
+            success += 1
+            print(f"✅ {username} ({tid})")
         else:
-            raise
-    secrets = {}
-    with open(SECRETS_CONF, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            parts = line.split('|')
-            if len(parts) >= 2:
-                label = parts[0]
-                secret = parts[1]
-                secrets[label] = secret
-    for username, secret in secrets.items():
-        c.execute("UPDATE users SET secret = ? WHERE username = ?", (secret, username))
-        if c.rowcount == 0:
-            c.execute("INSERT INTO users (username, telegram_id, secret, created_at) VALUES (?, ?, ?, ?)",
-                      (username, 'unknown', secret, datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
-    print("Migration completed")
+            print(f"⚠️ Не отправлено: {username} ({tid})")
+
+        time.sleep(0.1)
+
+    print(f"\n🎉 Готово. Отправлено {success} из {total}.")
 
 
 if __name__ == "__main__":
-    from datetime import datetime
-
     main()

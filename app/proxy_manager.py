@@ -3,7 +3,7 @@ import secrets
 import sqlite3
 import subprocess
 import re
-from app.config import CONFIG_PATH, DOMAIN, PORT, SERVER_IP, CONTAINER_NAME, DB_PATH
+from app.config import CONFIG_PATH, DOMAIN, PORT, SERVER, CONTAINER_NAME, DB_PATH, DOCKER_PORT
 import app.db as db
 
 TEMPLATE_HEAD = '''# MTProto Proxy configuration
@@ -34,7 +34,7 @@ def _read_config():
 
 
 def _write_config(users_dict):
-    port = PORT
+    port = DOCKER_PORT
     tls_domain = DOMAIN
     header = TEMPLATE_HEAD.format(port=port, tls_domain=tls_domain)
     users_str = "USERS = {\n"
@@ -88,7 +88,7 @@ def generate_unique_username(base="user"):
 def get_proxy_link(secret):
     domain_hex = DOMAIN.encode().hex()
     full_secret = f"ee{secret}{domain_hex}"
-    return f"tg://proxy?server={SERVER_IP}&port={PORT}&secret={full_secret}"
+    return f"tg://proxy?server={SERVER}&port={PORT}&secret={full_secret}"
 
 
 def create_user(username, telegram_id="unknown"):
@@ -96,7 +96,7 @@ def create_user(username, telegram_id="unknown"):
         return False, "User already exists"
     secret = secrets.token_hex(16)
     if add_user(username, secret):
-        db.add_user_to_db(username, telegram_id)
+        db.add_user_to_db(username, telegram_id, secret)
         link = get_proxy_link(secret)
         return True, link
     return False, "Failed to add user to proxy config"

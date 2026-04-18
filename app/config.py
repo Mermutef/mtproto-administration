@@ -13,7 +13,8 @@ CONTAINER_NAME = os.getenv("CONTAINER_NAME", "mtproto-proxy")
 
 DOMAIN = os.getenv("DOMAIN", "ya.ru")
 PORT = int(os.getenv("PORT", 443))
-SERVER_IP = os.getenv("SERVER_IP")
+DOCKER_PORT = int(os.getenv("DOCKER_PORT", 4443))
+SERVER = os.getenv("SERVER")
 DB_PATH = os.getenv("DB_PATH", "mtproto_bot.db")
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")

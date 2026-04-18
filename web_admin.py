@@ -6,7 +6,7 @@ import time
 import requests
 import subprocess
 from flask import Flask, request, render_template, jsonify
-from app.config import DOMAIN, PORT, SERVER_IP, ADMIN_PASSWORD, FLASK_PORT, DB_PATH, TOKEN, \
+from app.config import DOMAIN, PORT, SERVER, ADMIN_PASSWORD, FLASK_PORT, DB_PATH, TOKEN, \
     CONTAINER_NAME
 import app.proxy_manager as proxy_manager
 import app.db as db
@@ -187,7 +187,7 @@ def api_restart_server():
 if __name__ == "__main__":
     print("=" * 50)
     print(f"Container name: {CONTAINER_NAME}")
-    print(f"Domain: {DOMAIN}, Port: {PORT}, IP: {SERVER_IP}")
+    print(f"Domain: {DOMAIN}, Port: {PORT}, IP: {SERVER}")
     print(f"Admin password: {ADMIN_PASSWORD}")
     print(f"Starting web admin on http://0.0.0.0:{FLASK_PORT}")
     print("=" * 50)
