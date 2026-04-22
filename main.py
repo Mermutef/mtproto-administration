@@ -7,6 +7,7 @@ from app.handlers import (
     start_admin, adduser_command, users_command, revoke_command,
     button_callback, unknown
 )
+from app.handlers.admin_handlers import broadcast_command, sendto_command
 
 
 def main():
@@ -15,22 +16,20 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Пользовательские команды (только ЛС)
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("request", request_key, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("cancel", cancel_command, filters=filters.ChatType.PRIVATE))
 
-    # Административные команды (только группа)
     app.add_handler(CommandHandler("start", start_admin, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("adduser", adduser_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("users", users_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("revoke", revoke_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
+    app.add_handler(CommandHandler("broadcast", broadcast_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
+    app.add_handler(CommandHandler("sendto", sendto_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
 
-    # Callback кнопок
     app.add_handler(CallbackQueryHandler(button_callback))
 
-    # Неизвестные команды
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
     print("Бот запущен...")

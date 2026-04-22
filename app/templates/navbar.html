@@ -1,12 +1,29 @@
 <nav class="navbar navbar-expand-lg mb-4">
     <div class="container-fluid">
         <a class="navbar-brand" href="/">
-            MTProto Admin
+            <i class="bi bi-diagram-3"></i> OurAdmin
         </a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('mtproto_panel') }}">
+                        <i class="bi bi-shield-lock"></i> MTProto
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('xray_panel') }}">
+                        <i class="bi bi-cloud-arrow-up"></i> Xray
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('hysteria2_panel') }}">
+                        <i class="bi bi-lightning-charge"></i> Hysteria2
+                    </a>
+                </li>
+            </ul>
             <ul class="navbar-nav ms-auto">
                 <li class="nav-item">
                     <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#addUserModal">
@@ -21,11 +38,6 @@
                 <li class="nav-item">
                     <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#sendToModal">
                         <i class="bi bi-chat-dots"></i> Личное сообщение
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link link-secondary" href="#" id="restartContainerBtn">
-                        <i class="bi bi-arrow-repeat"></i> Перезапустить прокси
                     </a>
                 </li>
                 <li class="nav-item">

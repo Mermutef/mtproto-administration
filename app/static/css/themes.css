@@ -1,0 +1,55 @@
+[data-theme="canonical"] {
+    --theme-primary: #F2784B;
+    --theme-primary-dark: #C55649;
+    --theme-primary-light: #F2A25C;
+    --theme-primary-rgb: 242, 120, 75;
+
+    --theme-accent-warning: #F59E0B;
+    --theme-accent-warning-dark: #D97706;
+    --theme-accent-danger: #EF4444;
+    --theme-accent-danger-dark: #DC2626;
+
+    --bg-lines: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800"><path d="M50,150 Q200,50 400,200 T750,100" stroke="rgba(242,120,75,0.9)" fill="none" stroke-width="3"/><path d="M100,600 Q350,450 600,650 T900,500" stroke="rgba(242,120,75,0.85)" fill="none" stroke-width="3"/><path d="M200,50 Q450,200 550,100 T900,250" stroke="rgba(242,120,75,0.8)" fill="none" stroke-width="3"/><path d="M-50,400 Q200,300 400,500 T800,350" stroke="rgba(242,120,75,0.9)" fill="none" stroke-width="3"/><path d="M150,700 Q400,600 600,750 T950,650" stroke="rgba(242,120,75,0.8)" fill="none" stroke-width="3"/><path d="M300,300 Q500,100 700,300 T1000,150" stroke="rgba(242,120,75,0.85)" fill="none" stroke-width="3"/><path d="M0,250 Q250,400 450,250 T850,400" stroke="rgba(242,120,75,0.9)" fill="none" stroke-width="3"/><path d="M600,100 Q800,300 950,200" stroke="rgba(242,120,75,0.7)" fill="none" stroke-width="2"/><path d="M50,500 Q300,600 500,450 T900,550" stroke="rgba(242,120,75,0.75)" fill="none" stroke-width="2.5"/></svg>');
+}
+
+[data-theme="mtproto"] {
+    --theme-primary: #3B82F6;
+    --theme-primary-dark: #2563EB;
+    --theme-primary-light: #60A5FA;
+    --theme-primary-rgb: 59, 130, 246;
+
+    --theme-accent-warning: #F59E0B;
+    --theme-accent-warning-dark: #D97706;
+    --theme-accent-danger: #EF4444;
+    --theme-accent-danger-dark: #DC2626;
+
+    --bg-lines: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800"><path d="M50,150 Q200,50 400,200 T750,100" stroke="rgba(59,130,246,0.9)" fill="none" stroke-width="3"/><path d="M100,600 Q350,450 600,650 T900,500" stroke="rgba(59,130,246,0.85)" fill="none" stroke-width="3"/><path d="M200,50 Q450,200 550,100 T900,250" stroke="rgba(59,130,246,0.8)" fill="none" stroke-width="3"/><path d="M-50,400 Q200,300 400,500 T800,350" stroke="rgba(59,130,246,0.9)" fill="none" stroke-width="3"/><path d="M150,700 Q400,600 600,750 T950,650" stroke="rgba(59,130,246,0.8)" fill="none" stroke-width="3"/><path d="M300,300 Q500,100 700,300 T1000,150" stroke="rgba(59,130,246,0.85)" fill="none" stroke-width="3"/><path d="M0,250 Q250,400 450,250 T850,400" stroke="rgba(59,130,246,0.9)" fill="none" stroke-width="3"/><path d="M600,100 Q800,300 950,200" stroke="rgba(59,130,246,0.7)" fill="none" stroke-width="2"/><path d="M50,500 Q300,600 500,450 T900,550" stroke="rgba(59,130,246,0.75)" fill="none" stroke-width="2.5"/></svg>');
+}
+
+[data-theme="xray"] {
+    --theme-primary: #10B981;
+    --theme-primary-dark: #059669;
+    --theme-primary-light: #34D399;
+    --theme-primary-rgb: 16, 185, 129;
+
+    --theme-accent-warning: #F97316;
+    --theme-accent-warning-dark: #EA580C;
+    --theme-accent-danger: #EF4444;
+    --theme-accent-danger-dark: #DC2626;
+
+    --bg-lines: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800"><path d="M50,150 Q200,50 400,200 T750,100" stroke="rgba(16,185,129,0.9)" fill="none" stroke-width="3"/><path d="M100,600 Q350,450 600,650 T900,500" stroke="rgba(16,185,129,0.85)" fill="none" stroke-width="3"/><path d="M200,50 Q450,200 550,100 T900,250" stroke="rgba(16,185,129,0.8)" fill="none" stroke-width="3"/><path d="M-50,400 Q200,300 400,500 T800,350" stroke="rgba(16,185,129,0.9)" fill="none" stroke-width="3"/><path d="M150,700 Q400,600 600,750 T950,650" stroke="rgba(16,185,129,0.8)" fill="none" stroke-width="3"/><path d="M300,300 Q500,100 700,300 T1000,150" stroke="rgba(16,185,129,0.85)" fill="none" stroke-width="3"/><path d="M0,250 Q250,400 450,250 T850,400" stroke="rgba(16,185,129,0.9)" fill="none" stroke-width="3"/><path d="M600,100 Q800,300 950,200" stroke="rgba(16,185,129,0.7)" fill="none" stroke-width="2"/><path d="M50,500 Q300,600 500,450 T900,550" stroke="rgba(16,185,129,0.75)" fill="none" stroke-width="2.5"/></svg>');
+}
+
+[data-theme="hysteria2"] {
+    --theme-primary: #8B5CF6;
+    --theme-primary-dark: #7C3AED;
+    --theme-primary-light: #A78BFA;
+    --theme-primary-rgb: 139, 92, 246;
+
+    --theme-accent-warning: #F59E0B;
+    --theme-accent-warning-dark: #D97706;
+    --theme-accent-danger: #EF4444;
+    --theme-accent-danger-dark: #DC2626;
+
+    --bg-lines: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800"><path d="M50,150 Q200,50 400,200 T750,100" stroke="rgba(139,92,246,0.9)" fill="none" stroke-width="3"/><path d="M100,600 Q350,450 600,650 T900,500" stroke="rgba(139,92,246,0.85)" fill="none" stroke-width="3"/><path d="M200,50 Q450,200 550,100 T900,250" stroke="rgba(139,92,246,0.8)" fill="none" stroke-width="3"/><path d="M-50,400 Q200,300 400,500 T800,350" stroke="rgba(139,92,246,0.9)" fill="none" stroke-width="3"/><path d="M150,700 Q400,600 600,750 T950,650" stroke="rgba(139,92,246,0.8)" fill="none" stroke-width="3"/><path d="M300,300 Q500,100 700,300 T1000,150" stroke="rgba(139,92,246,0.85)" fill="none" stroke-width="3"/><path d="M0,250 Q250,400 450,250 T850,400" stroke="rgba(139,92,246,0.9)" fill="none" stroke-width="3"/><path d="M600,100 Q800,300 950,200" stroke="rgba(139,92,246,0.7)" fill="none" stroke-width="2"/><path d="M50,500 Q300,600 500,450 T900,550" stroke="rgba(139,92,246,0.75)" fill="none" stroke-width="2.5"/></svg>');
+}

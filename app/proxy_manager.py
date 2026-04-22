@@ -3,6 +3,10 @@ import secrets
 import sqlite3
 import subprocess
 import re
+from datetime import datetime
+
+from flask import json
+
 from app.config import CONFIG_PATH, DOMAIN, PORT, SERVER, CONTAINER_NAME, DB_PATH, DOCKER_PORT
 import app.db as db
 
@@ -76,13 +80,21 @@ def remove_user(username):
     return True
 
 
-def generate_unique_username(base="user"):
+def generate_unique_username(base: str) -> str:
+    """Генерирует уникальное имя пользователя на основе base."""
     users = load_users()
+    # Очищаем base от недопустимых символов
+    base = re.sub(r'[^a-zA-Z0-9_]', '_', base)
+    if not base:
+        base = "user"
+    if base not in users:
+        return base
+    i = 1
     while True:
-        num = secrets.randbelow(1000000)
-        username = f"{base}_{num}"
-        if username not in users:
-            return username
+        candidate = f"{base}_{i}"
+        if candidate not in users:
+            return candidate
+        i += 1
 
 
 def get_proxy_link(secret):
@@ -91,12 +103,26 @@ def get_proxy_link(secret):
     return f"tg://proxy?server={SERVER}&port={PORT}&secret={full_secret}"
 
 
-def create_user(username, telegram_id="unknown"):
+def create_user(username: str, telegram_id="unknown"):
+    """
+    Создаёт пользователя MTProto.
+    Если username уже существует, возвращает ошибку.
+    """
     if username in load_users():
         return False, "User already exists"
     secret = secrets.token_hex(16)
     if add_user(username, secret):
-        db.add_user_to_db(username, telegram_id, secret)
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO users (username, telegram_id, created_at) VALUES (?, ?, ?)",
+                  (username, str(telegram_id), datetime.now().isoformat()))
+        c.execute("SELECT id FROM users WHERE username = ?", (username,))
+        user_id = c.fetchone()[0]
+        key_data = json.dumps({"secret": secret})
+        c.execute("INSERT INTO keys (user_id, protocol, key_data, created_at) VALUES (?, 'mtproto', ?, ?)",
+                  (user_id, key_data, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
         link = get_proxy_link(secret)
         return True, link
     return False, "Failed to add user to proxy config"
@@ -106,19 +132,18 @@ def delete_user(username):
     if remove_user(username):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT telegram_id FROM users WHERE username = ?", (username,))
+        c.execute("SELECT id, telegram_id FROM users WHERE username = ?", (username,))
         row = c.fetchone()
+        if row:
+            user_id, telegram_id = row
+            if telegram_id not in ('unknown', 'web', '—'):
+                db.revoke_user_requests(telegram_id)
+            c.execute("DELETE FROM keys WHERE user_id = ?", (user_id,))
+            c.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
         conn.close()
-        if row and row[0] not in ('unknown', 'web'):
-            db.revoke_user_requests(row[0])
-        db.remove_user_from_db(username)
         return True
     return False
-
-
-def sync_all_users():
-    proxy_users = load_users()
-    db.sync_db_with_proxy(proxy_users)
 
 
 def rename_user(old_name, new_name):
@@ -135,3 +160,25 @@ def rename_user(old_name, new_name):
     conn.commit()
     conn.close()
     return True
+
+
+def sync_all_users():
+    proxy_users = load_users()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    for username, secret in proxy_users.items():
+        c.execute("SELECT id FROM users WHERE username = ?", (username,))
+        row = c.fetchone()
+        if not row:
+            c.execute("INSERT INTO users (username, telegram_id, created_at) VALUES (?, 'unknown', ?)",
+                      (username, datetime.now().isoformat()))
+            user_id = c.lastrowid
+        else:
+            user_id = row[0]
+        c.execute("SELECT id FROM keys WHERE user_id = ? AND protocol = 'mtproto'", (user_id,))
+        if not c.fetchone():
+            key_data = json.dumps({"secret": secret})
+            c.execute("INSERT INTO keys (user_id, protocol, key_data, created_at) VALUES (?, 'mtproto', ?, ?)",
+                      (user_id, key_data, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()

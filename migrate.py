@@ -1,81 +1,70 @@
 #!/usr/bin/env python3
 import sqlite3
-import requests
-import time
-import sys
-from pathlib import Path
-
-# Добавляем путь к проекту для импорта из app.config
-sys.path.insert(0, str(Path(__file__).parent))
-
-from app.config import TOKEN, DB_PATH, DOMAIN, SERVER, PORT
-
-DOMAIN_HEX = DOMAIN.encode().hex()
+import asyncio
+import re
+from app.config import DB_PATH, TOKEN
+from app.proxy_manager import load_users, rename_user
+from telegram import Bot
 
 
-def get_all_users_with_secret():
+async def main():
+    bot = Bot(token=TOKEN)
+    users = load_users()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("""
-        SELECT username, telegram_id, secret 
-        FROM users 
-        WHERE telegram_id NOT IN ('unknown', 'web', '—') 
-          AND secret IS NOT NULL
-    """)
-    rows = c.fetchall()
-    conn.close()
-    return rows
 
+    # Список логинов, которые нужно попробовать исправить
+    target_usernames = ["u_937383965_398697", "u_301750870_440051"]
 
-def send_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    try:
-        r = requests.post(url, data=data, timeout=10)
-        return r.ok
-    except Exception as e:
-        print(f"❌ Ошибка отправки для {chat_id}: {e}")
-        return False
+    for old_name in target_usernames:
+        if old_name not in users:
+            print(f"❌ Пользователь {old_name} не найден в конфиге прокси.")
+            continue
 
+        # Пытаемся определить Telegram ID по структуре имени
+        match = re.search(r'u_(\d+)_\d+', old_name)
+        if not match:
+            print(f"❌ Не удалось извлечь Telegram ID из имени {old_name}.")
+            continue
 
-def main():
-    users = get_all_users_with_secret()
-    total = len(users)
-    print(f"Найдено пользователей: {total}")
-    success = 0
+        tid = match.group(1)
 
-    for username, tid, secret in users:
-        full_secret = f"ee{secret}{DOMAIN_HEX}"
-        link = f"tg://proxy?server={SERVER}&port={PORT}&secret={full_secret}"
+        try:
+            chat = await bot.get_chat(int(tid))
+            base_name = chat.username or chat.first_name or f"user{tid}"
+        except Exception as e:
+            print(f"⚠️ Не удалось получить данные для Telegram ID {tid}: {e}")
+            continue
 
-        message = (
-            f"🔐 <b>Обновление подключения к Telegram</b>\n\n"
-            f"Уважаемые пользователи!\n\n"
-            f"В связи с усилением блокировок был обновлен прокси-сервер. "
-            f"Новая конфигурация должна обеспечивать более стабильную работу и лучшую защиту от ограничений.\n\n"
-            f"<b>Для перехода на новое подключение:</b>\n"
-            f"1. Нажмите на ссылку ниже:\n"
-            f"{link}\n"
-            f"2. В открывшемся окне Telegram нажмите «Подключить прокси» (или «Connect proxy»).\n"
-            f"3. Готово — новое соединение активируется автоматически.\n\n"
-            f"Если возникнут вопросы — просто свяжитесь с тем, кто изначально предоставил вам доступ к сервису."
-        )
+        base_name = re.sub(r'[^a-zA-Z0-9_]', '_', base_name)
+        new_name = f"{base_name}_{tid}"
 
-        if send_message(tid, message):
-            success += 1
-            print(f"✅ {username} ({tid})")
+        if new_name == old_name:
+            print(f"✓ {old_name} уже имеет правильное имя.")
+            continue
+
+        # Проверяем, не занято ли новое имя
+        c.execute("SELECT 1 FROM users WHERE username = ?", (new_name,))
+        if c.fetchone():
+            print(f"⚠️ Имя {new_name} уже занято, пробуем добавить суффикс.")
+            counter = 1
+            while True:
+                candidate = f"{new_name}_{counter}"
+                c.execute("SELECT 1 FROM users WHERE username = ?", (candidate,))
+                if not c.fetchone():
+                    new_name = candidate
+                    break
+                counter += 1
+
+        print(f"🔄 Переименовываем {old_name} -> {new_name}")
+        if rename_user(old_name, new_name):
+            print(f"   ✅ Успешно")
         else:
-            print(f"⚠️ Не отправлено: {username} ({tid})")
+            print(f"   ❌ Ошибка переименования {old_name}")
 
-        time.sleep(0.1)
-
-    print(f"\n🎉 Готово. Отправлено {success} из {total}.")
+    conn.close()
+    print("🎉 Операция завершена.")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

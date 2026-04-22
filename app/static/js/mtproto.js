@@ -1,3 +1,4 @@
+// Форматтеры для таблицы MTProto
 function linkFormatter(value, row) {
     return `<button class="btn btn-sm btn-primary copy-link-btn" data-link="${row.link}"><i class="bi bi-clipboard"></i> Копировать</button>`;
 }
@@ -26,15 +27,6 @@ function statusFormatter(value, row) {
     return statusMap[value] || value;
 }
 
-function tgIDFormatter(value, row) {
-    const statusMap = {
-        "web": '<span class="badge bg-secondary">Web</span>',
-        "unknown": '<span class="badge bg-warning">Неизвестно</span>',
-        "—": '<span class="badge bg-warning">Неизвестно</span>',
-    };
-    return statusMap[value] || `<span class="badge bg-primary">${value}</span>`;
-}
-
 $(document).on('click', '.copy-link-btn', function () {
     const link = $(this).data('link');
     copyToClipboard(link);
@@ -47,7 +39,7 @@ $('#submitAddUser').click(function () {
         return;
     }
     $.ajax({
-        url: '/api/add_user',
+        url: '/api/mtproto/add_user',
         method: 'POST',
         contentType: 'application/json',
         data: JSON.stringify({username: username}),
@@ -67,21 +59,28 @@ $('#submitAddUser').click(function () {
     });
 });
 
-$('#submitBroadcast').click(function () {
-    const message = $('#broadcastMessage').val().trim();
-    if (!message) {
-        showToast('Введите текст сообщения', 'danger');
+window.renameUser = function (username) {
+    $('#renameOldName').val(username);
+    $('#renameNewName').val('');
+    $('#renameModal').modal('show');
+};
+
+$('#submitRename').click(function () {
+    const oldName = $('#renameOldName').val();
+    const newName = $('#renameNewName').val().trim();
+    if (!newName) {
+        showToast('Введите новое имя', 'danger');
         return;
     }
     $.ajax({
-        url: '/api/broadcast',
+        url: '/api/mtproto/rename_user',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({message: message}),
+        data: JSON.stringify({old_name: oldName, new_name: newName}),
         success: function (res) {
             if (res.success) {
-                $('#broadcastModal').modal('hide');
-                $('#broadcastMessage').val('');
+                $('#renameModal').modal('hide');
+                $('#users-table').bootstrapTable('refresh');
                 showToast(res.message, 'success');
             } else {
                 showToast(res.error, 'danger');
@@ -93,23 +92,23 @@ $('#submitBroadcast').click(function () {
     });
 });
 
-$('#submitSendTo').click(function () {
-    const username = $('#sendToUsername').val().trim();
-    const message = $('#sendToMessage').val().trim();
-    if (!username || !message) {
-        showToast('Заполните оба поля', 'danger');
-        return;
-    }
+window.deleteUser = function (username) {
+    $('#deleteUsernamePlaceholder').text(username);
+    $('#deleteUsernameInput').val(username);
+    $('#confirmDeleteUserModal').modal('show');
+};
+
+$('#confirmDeleteUserBtn').click(function () {
+    const username = $('#deleteUsernameInput').val();
+    $('#confirmDeleteUserModal').modal('hide');
     $.ajax({
-        url: '/api/send_to',
+        url: '/api/mtproto/delete_user',
         method: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify({username: username, message: message}),
+        data: JSON.stringify({username: username}),
         success: function (res) {
             if (res.success) {
-                $('#sendToModal').modal('hide');
-                $('#sendToUsername').val('');
-                $('#sendToMessage').val('');
+                $('#users-table').bootstrapTable('refresh');
                 showToast(res.message, 'success');
             } else {
                 showToast(res.error, 'danger');
@@ -120,45 +119,3 @@ $('#submitSendTo').click(function () {
         }
     });
 });
-
-$('#restartContainerBtn').click(function (e) {
-    e.preventDefault();
-    $('#confirmRestartContainerModal').modal('show');
-});
-
-$('#confirmRestartContainer').click(function () {
-    $('#confirmRestartContainerModal').modal('hide');
-    $.ajax({
-        url: '/api/restart_container',
-        method: 'POST',
-        success: function (res) {
-            showToast(res.message, 'success');
-        },
-        error: function () {
-            showToast('Ошибка перезапуска', 'danger');
-        }
-    });
-});
-
-$('#restartServerBtn').click(function (e) {
-    e.preventDefault();
-    $('#confirmRestartServerModal').modal('show');
-});
-
-$('#confirmRestartServer').click(function () {
-    $('#confirmRestartServerModal').modal('hide');
-    $.ajax({
-        url: '/api/restart_server',
-        method: 'POST',
-        success: function (res) {
-            alert(res.message);
-        },
-        error: function () {
-            alert('Ошибка при перезагрузке сервера');
-        }
-    });
-});
-
-function refreshTable() {
-    $('#users-table').bootstrapTable('refresh');
-}
