@@ -7,7 +7,7 @@ from app.handlers import (
     start_admin, adduser_command, users_command, revoke_command,
     button_callback, unknown
 )
-from app.handlers.admin_handlers import broadcast_command, sendto_command
+from app.handlers.admin_handlers import broadcast_command, sendto_command, cache_message_handler
 
 
 def main():
@@ -31,6 +31,8 @@ def main():
     app.add_handler(CallbackQueryHandler(button_callback))
 
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
+
+    app.add_handler(MessageHandler(filters.Chat(chat_id=ADMIN_GROUP_ID) & filters.ALL, cache_message_handler), group=0)
 
     print("Бот запущен...")
     app.run_polling()

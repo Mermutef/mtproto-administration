@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import time
 from datetime import datetime
 from app.config import DB_PATH
 
@@ -29,6 +30,14 @@ def init_db():
                   status TEXT,
                   created_at TEXT,
                   FOREIGN KEY (user_id) REFERENCES users (id))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS message_cache
+                     (media_group_id TEXT NOT NULL,
+                      message_id INTEGER NOT NULL,
+                      chat_id INTEGER NOT NULL,
+                      date REAL NOT NULL,
+                      PRIMARY KEY (chat_id, message_id))''')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_cache_group ON message_cache(media_group_id, chat_id)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_cache_date ON message_cache(date)')
     conn.commit()
     conn.close()
 
@@ -148,3 +157,37 @@ def get_user_active_keys(telegram_id, protocol):
         key_data = json.loads(row[0])
         keys.append(key_data)
     return keys
+
+
+def get_unique_telegram_ids():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT telegram_id
+        FROM users
+        WHERE telegram_id NOT IN ('web', 'unknown', '') AND telegram_id IS NOT NULL
+    """)
+    rows = c.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+
+def cache_message(chat_id: int, message_id: int, media_group_id: str, date: float):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    cutoff = time.time() - 7 * 24 * 3600
+    c.execute("DELETE FROM message_cache WHERE date < ?", (cutoff,))
+    c.execute("INSERT OR REPLACE INTO message_cache (media_group_id, message_id, chat_id, date) VALUES (?,?,?,?)",
+              (media_group_id, message_id, chat_id, date))
+    conn.commit()
+    conn.close()
+
+
+def get_media_group_message_ids(chat_id: int, media_group_id: str) -> list[int]:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT message_id FROM message_cache WHERE chat_id = ? AND media_group_id = ? ORDER BY message_id",
+              (chat_id, media_group_id))
+    ids = [row[0] for row in c.fetchall()]
+    conn.close()
+    return ids

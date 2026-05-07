@@ -1,5 +1,8 @@
 import sqlite3
-from telegram import Update, InputMediaPhoto, InputMediaVideo, InputMediaDocument, InputMediaAudio
+import asyncio
+import traceback
+
+from telegram import Update
 from telegram.ext import ContextTypes
 import app.db as db
 import app.proxy_manager as proxy_manager
@@ -140,80 +143,49 @@ async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(MESSAGES["revoke_error"])
 
 
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Рассылка сообщения всем пользователям бота."""
-    if update.effective_chat.id != ADMIN_GROUP_ID:
-        return
-    if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
-        return
-
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "ℹ️ Ответьте на сообщение, которое хотите разослать, командой /broadcast"
+async def cache_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if msg and msg.media_group_id and msg.date:
+        db.cache_message(
+            chat_id=msg.chat_id,
+            message_id=msg.message_id,
+            media_group_id=msg.media_group_id,
+            date=msg.date.timestamp()
         )
-        return
 
-    users = db.get_all_users_with_telegram()
-    if not users:
-        await update.message.reply_text("📭 Нет пользователей для рассылки.")
-        return
 
-    original = update.message.reply_to_message
-    success = 0
-    failed = 0
-
-    status_msg = await update.message.reply_text(f"⏳ Рассылка начата. Всего получателей: {len(users)}...")
-
-    media_group_id = original.media_group_id
-
-    if media_group_id:
-        # Собираем все сообщения из этой медиагруппы
-        media_messages = []
-        async for msg in context.bot.get_chat_history(update.effective_chat.id, limit=50):
-            if msg.media_group_id == media_group_id:
-                media_messages.append(msg)
-        media_messages.sort(key=lambda x: x.message_id)
-
-        input_media_list = []
-        for i, msg in enumerate(media_messages):
-            caption = msg.caption if i == 0 else None
-            if msg.photo:
-                input_media_list.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=caption))
-            elif msg.video:
-                input_media_list.append(InputMediaVideo(media=msg.video.file_id, caption=caption))
-            elif msg.document:
-                input_media_list.append(InputMediaDocument(media=msg.document.file_id, caption=caption))
-            elif msg.audio:
-                input_media_list.append(InputMediaAudio(media=msg.audio.file_id, caption=caption))
+async def _copy_to_user(chat_id: int, source_chat_id: int,
+                        reply_message, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    try:
+        if reply_message.media_group_id:
+            album_ids = db.get_media_group_message_ids(source_chat_id, reply_message.media_group_id)
+            if album_ids:
+                await context.bot.copy_messages(
+                    chat_id=chat_id,
+                    from_chat_id=source_chat_id,
+                    message_ids=album_ids
+                )
+                return True
             else:
-                continue
-
-        for username, tid in users:
-            try:
-                await context.bot.send_media_group(chat_id=int(tid), media=input_media_list)
-                success += 1
-            except Exception as e:
-                failed += 1
-                print(f"Ошибка отправки медиагруппы пользователю {tid}: {e}")
-    else:
-        for username, tid in users:
-            try:
-                await original.copy(chat_id=int(tid))
-                success += 1
-            except Exception as e:
-                failed += 1
-                print(f"Ошибка отправки пользователю {tid}: {e}")
-
-    await status_msg.edit_text(
-        f"✅ Рассылка завершена.\n"
-        f"Успешно: {success}\n"
-        f"Ошибок: {failed}"
-    )
+                await context.bot.copy_message(
+                    chat_id=chat_id,
+                    from_chat_id=source_chat_id,
+                    message_id=reply_message.message_id
+                )
+                return True
+        else:
+            await context.bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=source_chat_id,
+                message_id=reply_message.message_id
+            )
+            return True
+    except Exception as e:
+        traceback.print_exc()
+        return False
 
 
 async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Пересылка сообщения конкретному пользователю."""
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
@@ -229,9 +201,7 @@ async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target = context.args[0].lstrip('@')
-    original = update.message.reply_to_message
 
-    # Пытаемся определить получателя
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT telegram_id FROM users WHERE username = ? OR telegram_id = ?", (target, target))
@@ -247,34 +217,49 @@ async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ У пользователя '{target}' нет Telegram ID.")
         return
 
-    try:
-        media_group_id = original.media_group_id
-        if media_group_id:
-            # Собираем все сообщения альбома
-            media_messages = []
-            async for msg in context.bot.get_chat_history(update.effective_chat.id, limit=50):
-                if msg.media_group_id == media_group_id:
-                    media_messages.append(msg)
-            media_messages.sort(key=lambda x: x.message_id)
-
-            input_media_list = []
-            for i, msg in enumerate(media_messages):
-                caption = msg.caption if i == 0 else None
-                if msg.photo:
-                    input_media_list.append(InputMediaPhoto(media=msg.photo[-1].file_id, caption=caption))
-                elif msg.video:
-                    input_media_list.append(InputMediaVideo(media=msg.video.file_id, caption=caption))
-                elif msg.document:
-                    input_media_list.append(InputMediaDocument(media=msg.document.file_id, caption=caption))
-                elif msg.audio:
-                    input_media_list.append(InputMediaAudio(media=msg.audio.file_id, caption=caption))
-                else:
-                    continue
-
-            await context.bot.send_media_group(chat_id=int(tid), media=input_media_list)
-        else:
-            await original.copy(chat_id=int(tid))
-
+    source_chat_id = update.effective_chat.id
+    success = await _copy_to_user(int(tid), source_chat_id,
+                                  update.message.reply_to_message, context)
+    if success:
         await update.message.reply_text(f"✅ Сообщение отправлено пользователю '{target}'.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Ошибка отправки: {e}")
+    else:
+        await update.message.reply_text(f"❌ Не удалось отправить сообщение пользователю '{target}'.")
+
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text("ℹ️ Ответьте на сообщение, которое хотите разослать, командой /broadcast")
+        return
+
+    unique_ids = db.get_unique_telegram_ids()
+    if not unique_ids:
+        await update.message.reply_text("📭 Нет пользователей для рассылки.")
+        return
+
+    total = len(unique_ids)
+    status_msg = await update.message.reply_text(f"⏳ Рассылка начата. Получателей: {total}...")
+    source_chat_id = update.effective_chat.id
+    original = update.message.reply_to_message
+
+    success = 0
+    failed = 0
+
+    for tid in unique_ids:
+        ok = await _copy_to_user(int(tid), source_chat_id, original, context)
+        if ok:
+            success += 1
+        else:
+            failed += 1
+        await asyncio.sleep(0.15)  # защита от лимитов
+
+    await status_msg.edit_text(
+        f"✅ Рассылка завершена.\n"
+        f"Успешно: {success}\n"
+        f"Ошибок: {failed}"
+    )
