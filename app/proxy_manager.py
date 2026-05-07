@@ -180,5 +180,21 @@ def sync_all_users():
             key_data = json.dumps({"secret": secret})
             c.execute("INSERT INTO keys (user_id, protocol, key_data, created_at) VALUES (?, 'mtproto', ?, ?)",
                       (user_id, key_data, datetime.now().isoformat()))
+
+    c.execute("""
+        SELECT u.username, json_extract(k.key_data, '$.secret') as secret
+        FROM keys k
+        JOIN users u ON k.user_id = u.id
+        WHERE k.protocol = 'mtproto' AND k.status = 'active'
+          AND u.username NOT IN (SELECT value FROM json_each(?))
+    """, (json.dumps(list(proxy_users.keys())),))
+    missing = c.fetchall()
+    if missing:
+        new_users = proxy_users.copy()
+        for username, secret in missing:
+            if secret:
+                new_users[username] = secret
+        save_users(new_users)
+
     conn.commit()
     conn.close()
