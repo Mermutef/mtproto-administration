@@ -42,7 +42,6 @@ class XUIClient:
             body = resp.text[:300] if resp else "No response"
             raise Exception(f"Не удалось авторизоваться в 3x-ui (status {resp.status_code if resp else 'N/A'})")
 
-        # ✅ Проверяем, что куки сессии действительно установились
         session_cookie = self._get_session_cookie()
         if not session_cookie:
             time.sleep(1)
@@ -130,8 +129,19 @@ class XUIClient:
         except json.JSONDecodeError as e:
             raise Exception(f"Невалидный JSON от сервера: {e}")
 
+    def get_client_sub_id(self, inbound_id: int, email: str) -> str:
+        self._ensure_authenticated()
+        try:
+            clients = self.get_clients(inbound_id)
+            for c in clients:
+                if c.get("email") == email:
+                    return c.get("subId", "")
+        except Exception:
+            pass
+        return ""
+
     def add_client(self, inbound_id: int, email: str, uuid_str: Optional[str] = None,
-                   flow: str = "xtls-rprx-vision") -> str:
+                   flow: str = "xtls-rprx-vision") -> Dict[str, str]:
         self._ensure_authenticated()
 
         if not uuid_str:
@@ -152,10 +162,11 @@ class XUIClient:
             json={"id": inbound_id, "settings": json.dumps(settings, ensure_ascii=False)}
         )
 
-        if resp_data.get("success"):
-            return uuid_str
+        if not resp_data.get("success"):
+            raise Exception(resp_data.get("msg", "Ошибка при добавлении клиента"))
 
-        raise Exception(resp_data.get("msg", "Ошибка при добавлении клиента"))
+        sub_id = self.get_client_sub_id(inbound_id, email)
+        return {"uuid": uuid_str, "sub_id": sub_id}
 
     def remove_client(self, inbound_id: int, email: str) -> bool:
         self._ensure_authenticated()

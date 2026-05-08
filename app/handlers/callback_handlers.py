@@ -7,7 +7,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
 import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_INBOUND_ID, generate_xray_link
+from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_INBOUND_ID, XRAY_SUB_URL_BASE
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
 
@@ -79,8 +79,27 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         link = proxy_manager.get_proxy_link(key['secret'])
                         msg += f"\n\nЛогин: <code>{key['username']}</code>\nСсылка: {link}"
                     elif protocol == 'xray':
-                        link = generate_xray_link(key['uuid'])
-                        msg += f"\n\nEmail: <code>{key['email']}</code>\nСсылка: {link}"
+                        email = key.get('email')
+                        sub_id = key.get('sub_id')
+                        if not sub_id and email:
+                            xui = get_xui_client()
+                            if xui:
+                                sub_id = xui.get_client_sub_id(XRAY_INBOUND_ID, email)
+                                if sub_id:
+                                    conn = sqlite3.connect(DB_PATH)
+                                    c = conn.cursor()
+                                    c.execute(
+                                        "UPDATE keys SET key_data = json_set(key_data, '$.sub_id', ?) "
+                                        "WHERE protocol='xray' AND json_extract(key_data, '$.email') = ?",
+                                        (sub_id, email)
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                        if sub_id:
+                            subscribe_url = f"{XRAY_SUB_URL_BASE}{sub_id}"
+                        else:
+                            subscribe_url = ""  # или можно показать "недоступна"
+                        msg += f"\n\nEmail: <code>{email}</code>\nСсылка: {subscribe_url}"
                 await query.edit_message_text(msg, parse_mode="HTML")
                 return
 
@@ -142,7 +161,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=int(uid),
-                        text=MESSAGES["admin_key_granted"].format(username=escape_html(proxy_username), link=link),
+                        text=MESSAGES["admin_key_granted"].format(
+                            username=escape_html(proxy_username), link=link),
                         parse_mode="HTML"
                     )
                 except Exception as e:
@@ -162,7 +182,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             base_name = re.sub(r'[^a-zA-Z0-9_]', '_', base_name)
             email = f"{base_name}_{uid}"
             try:
-                uuid_str = xui.add_client(XRAY_INBOUND_ID, email)
+                result = xui.add_client(XRAY_INBOUND_ID, email)
+                uuid_str = result["uuid"]
+                sub_id = result["sub_id"]
+
                 conn = sqlite3.connect(DB_PATH)
                 c = conn.cursor()
                 now = db.datetime.now().isoformat()
@@ -170,18 +193,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                           (email, str(uid), now))
                 c.execute("SELECT id FROM users WHERE username = ?", (email,))
                 user_db_id = c.fetchone()[0]
-                key_data = json.dumps({"email": email, "uuid": uuid_str})
+                key_data = json.dumps({"email": email, "uuid": uuid_str, "sub_id": sub_id})
                 c.execute("INSERT INTO keys (user_id, protocol, key_data, created_at) VALUES (?, 'xray', ?, ?)",
                           (user_db_id, key_data, now))
                 conn.commit()
                 conn.close()
 
                 db.update_request_status(req_id, "approved")
-                link = generate_xray_link(uuid_str)
+                subscribe_url = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
                 try:
                     await context.bot.send_message(
                         chat_id=int(uid),
-                        text=MESSAGES["admin_key_granted"].format(username=escape_html(email), link=link),
+                        text=MESSAGES["xray_key_granted"].format(
+                            email=escape_html(email),
+                            subscribe_url=subscribe_url
+                        ),
                         parse_mode="HTML"
                     )
                 except Exception as e:

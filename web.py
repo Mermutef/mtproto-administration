@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import secrets
 import sqlite3
 import threading
@@ -12,7 +11,7 @@ from flask import Flask, request, render_template, jsonify
 from werkzeug.exceptions import HTTPException
 from app.config import (
     DOMAIN, PORT, SERVER, ADMIN_PASSWORD, FLASK_PORT, DB_PATH, TOKEN,
-    CONTAINER_NAME, XRAY_INBOUND_ID, generate_xray_link
+    CONTAINER_NAME, XRAY_INBOUND_ID, XRAY_SUB_URL_BASE
 )
 import app.proxy_manager as proxy_manager
 import app.db as db
@@ -26,7 +25,6 @@ _xui_per_thread = threading.local()
 
 
 def get_xui_client():
-    """Возвращает потокобезопасный экземпляр XUIClient (по одному на поток)."""
     client = getattr(_xui_per_thread, 'client', None)
     if client is None:
         try:
@@ -72,7 +70,6 @@ def filter_noisy():
         return "", 200
 
 
-# ---------- Главная страница ----------
 @app.route("/")
 def index():
     if not check_auth():
@@ -80,7 +77,6 @@ def index():
     return render_template("index.html")
 
 
-# ---------- MTProto API ----------
 @app.route("/api/mtproto/users")
 def api_mtproto_users():
     if not check_auth():
@@ -163,7 +159,6 @@ def api_mtproto_rename_user():
         return jsonify({"error": "Ошибка при переименовании"}), 500
 
 
-# ---------- Xray API ----------
 @app.route("/api/xray/users")
 def api_xray_users():
     if not check_auth():
@@ -180,24 +175,41 @@ def api_xray_users():
         email = c.get("email", "")
         uuid_str = c.get("id", "")
         enable = c.get("enable", True)
-        link = generate_xray_link(uuid_str)
+
+        # Получаем sub_id из БД (если есть) или запрашиваем у API и сохраняем
         conn = sqlite3.connect(DB_PATH)
         c_db = conn.cursor()
         c_db.execute('''
-            SELECT u.telegram_id, k.created_at FROM keys k
+            SELECT u.telegram_id, k.created_at, json_extract(k.key_data, '$.sub_id') as sub_id
+            FROM keys k
             JOIN users u ON k.user_id = u.id
             WHERE k.protocol='xray' AND json_extract(k.key_data, '$.email') = ?
         ''', (email,))
         row = c_db.fetchone()
-        conn.close()
         telegram_id = row[0] if row else "—"
         created_at_db = row[1] if row and row[1] else None
+        sub_id = row[2] if row else None
+
+        if not sub_id:
+            sub_id = client.get_client_sub_id(XRAY_INBOUND_ID, email)
+            if sub_id:
+                c_db.execute(
+                    "UPDATE keys SET key_data = json_set(key_data, '$.sub_id', ?) "
+                    "WHERE protocol='xray' AND json_extract(key_data, '$.email') = ?",
+                    (sub_id, email)
+                )
+                conn.commit()
+        conn.close()
+
+        link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
+
         if created_at_db:
             created_at = created_at_db
         elif c.get('created_at'):
             created_at = datetime.fromtimestamp(c.get('created_at') / 1000).isoformat()
         else:
             created_at = "—"
+
         data.append({
             "email": email,
             "uuid": uuid_str,
@@ -220,9 +232,12 @@ def api_xray_add_user():
     if client is None:
         return jsonify({"error": "API 3x-ui недоступно"}), 503
     try:
-        uuid_str = client.add_client(XRAY_INBOUND_ID, email)
+        result = client.add_client(XRAY_INBOUND_ID, email)
+        uuid_str = result["uuid"]
+        sub_id = result["sub_id"]
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     now = datetime.now().isoformat()
@@ -230,12 +245,19 @@ def api_xray_add_user():
               (email, now))
     c.execute("SELECT id FROM users WHERE username = ?", (email,))
     user_id = c.fetchone()[0]
-    key_data = json.dumps({"email": email, "uuid": uuid_str})
+    key_data = json.dumps({"email": email, "uuid": uuid_str, "sub_id": sub_id})
     c.execute("INSERT INTO keys (user_id, protocol, key_data, created_at) VALUES (?, 'xray', ?, ?)",
               (user_id, key_data, now))
     conn.commit()
     conn.close()
-    return jsonify({"success": True, "message": f"Клиент {email} добавлен", "uuid": uuid_str})
+
+    subscribe_url = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
+    return jsonify({
+        "success": True,
+        "message": f"Клиент {email} добавлен",
+        "uuid": uuid_str,
+        "subscribe_url": subscribe_url
+    })
 
 
 @app.route("/api/xray/delete_user", methods=["POST"])
@@ -301,15 +323,13 @@ def api_xray_rename_user():
     return jsonify({"success": True, "message": f"Клиент переименован в {new_email}"})
 
 
-# ---------- Заглушка для Hysteria2 API (чтобы не было 500) ----------
 @app.route("/api/hysteria2/users")
 def api_hysteria2_users():
     if not check_auth():
         return jsonify({"error": "Unauthorized"}), 401
-    return jsonify([])  # пока нет данных
+    return jsonify([])
 
 
-# ---------- Общие API ----------
 @app.route("/api/broadcast", methods=["POST"])
 def api_broadcast():
     if not check_auth():
@@ -369,7 +389,6 @@ def api_restart_server():
     return jsonify({"success": True, "message": "Сервер перезагружается..."})
 
 
-# ---------- Страницы протоколов ----------
 @app.route("/mtproto")
 def mtproto_panel():
     if not check_auth():
