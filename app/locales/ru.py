@@ -2,11 +2,13 @@ MESSAGES = {
     "start": (
         "🚀 <b>VPN Bot</b>\n\n"
         "Этот бот выдаёт ключи для доступа к прокси и VPN.\n\n"
-        "<b>Команды:</b>\n"
+        "<b>Доступные команды:</b>\n"
         "/request — подать заявку на получение ключа\n"
         "/status — проверить статус последней заявки\n"
         "/cancel — отменить текущую заявку\n\n"
-        "После одобрения администратором ключ придёт в этот чат."
+        "После одобрения администратором ключ придёт в этот чат.\n\n"
+        "<i>Поддерживаемые протоколы: MTProto (прокси Telegram), Xray (VLESS Reality), "
+        "Hysteria2 (скоро будет).</i>"
     ),
     "already_has_key": "⚠️ У вас уже есть активный ключ для {protocol}.\nЕсли вы забыли ссылку, обратитесь к администратору.",
     "already_has_keys": "⚠️ У вас уже есть активные ключи для {protocol}:",
@@ -25,7 +27,7 @@ MESSAGES = {
         "Создана: {created}"
     ),
     "status_pending": "⏳ Ожидает рассмотрения",
-    "status_approved": "✅ Одобрена (ключ уже должен был прийти)",
+    "status_approved": "✅ Одобрена (ключ уже должен быть у вас)",
     "status_rejected": "❌ Отклонена",
     "status_revoked": "🚫 Отозвана",
     "no_pending_requests": "У вас нет ожидающих заявок.",
@@ -35,18 +37,20 @@ MESSAGES = {
     "unknown_command": "❓ Неизвестная команда. Используйте /start",
     "admin_start": (
         "👑 <b>Административная панель</b>\n\n"
-        "<b>Доступные команды:</b>\n"
-        "/users — список пользователей с кнопками отзыва\n"
-        "/adduser @username — выдать ключ пользователю (MTProto)\n"
+        "<b>Команды:</b>\n"
+        "/users — список пользователей\n"
+        "/adduser @username [протокол] — выдать ключ (по умолчанию MTProto)\n"
         "/revoke @username — отозвать ключ\n"
-        "/sendto @username — переслать сообщение конкретному пользователю\n"
-        "/broadcast — рассылка (ответ на сообщение)\n\n"
-        "Заявки приходят с кнопками Одобрить/Отклонить."
+        "/sendto @username — переслать сообщение пользователю\n"
+        "/broadcast [фильтр] — рассылка сообщения всем/по протоколам\n"
+        "       Фильтры: all, mtproto, xray, hysteria2\n"
+        "/resend_keys [фильтр] — повторно отправить существующие ключи\n\n"
+        "Заявки приходят с кнопками ✅Одобрить / ❌Отклонить."
     ),
     "adduser_usage": "❌ Использование: /adduser @username [mtproto|xray|hysteria2] или /adduser логин",
     "user_not_found": "❌ Не найден @{username}. Убедитесь, что пользователь начал диалог с ботом.",
     "user_already_has_key": "⚠️ У @{tg_username} уже есть ключ: <code>{username}</code>",
-    "mtp_key_created_sent": "✅ Ключ для @{username} создан и отправлен.",
+    "mtp_key_created_sent": "✅ MTProto-ключ для @{username} создан и отправлен.",
     "xray_key_created_sent": "✅ Xray-ключ для @{username} создан и отправлен.",
     "key_created_error": "❌ Ошибка при создании ключа: {error}",
     "admin_key_granted": (
@@ -65,15 +69,15 @@ MESSAGES = {
         "Ссылка на подписку: {subscribe_url}\n\n"
         "<b>Как подключиться:</b>\n"
         "1. Скачайте и установите Hiddify:\n"
-        "   * Официальный сайт https://hiddify.com\n"
-        "   * AppStore https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532\n"
-        "   * Google Play https://play.google.com/store/apps/details?id=app.hiddify.com\n"
-        "2. Скопируйте ссылку на подписку.\n"
-        "3. Откройте приложение, нажмите «+» в верхней правой части экрана.\n"
-        "4. Вставьте скопированную ссылку на подписку (выше) и подтвердите (кнопка «Буфер обмена»).\n"
+        "   • Официальный сайт: https://hiddify.com\n"
+        "   • AppStore: https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532\n"
+        "   • Google Play: https://play.google.com/store/apps/details?id=app.hiddify.com\n"
+        "2. Скопируйте ссылку на подписку выше.\n"
+        "3. Откройте Hiddify, нажмите «+» в правом верхнем углу.\n"
+        "4. Вставьте скопированную ссылку (кнопка «Буфер обмена») и подтвердите.\n"
         "5. После импорта выберите появившуюся конфигурацию и подключитесь.\n\n"
         "Приятного использования!\n\n"
-        "P.S. Получить ссылку на подключение для клиентов, не поддерживающих механизм подписки, можно перейдя по ссылке подписки в браузере."
+        "P.S. Вы также можете открыть ссылку на подписку в браузере, чтобы получить ключ для других приложений."
     ),
     "users_list_empty": "📭 Список пользователей пуст.",
     "users_list_header": "<b>📋 Список пользователей:</b>\n",
@@ -83,13 +87,13 @@ MESSAGES = {
     "revoke_user_not_found": "❌ Пользователь @{identifier} не найден.",
     "revoke_success": "✅ Ключ для @{identifier} отозван.",
     "revoke_error": "❌ Ошибка при отзыве.",
-    "key_revoked_notification": "⚠️ Ваш ключ отозван администратором.",
+    "key_revoked_notification": "⚠️ Ваш ключ был отозван администратором.",
     "approve_request_success": "✅ Заявка #{req_id} одобрена. Ключ отправлен пользователю.",
     "approve_request_error": "❌ Ошибка создания ключа: {error}",
     "reject_request_success": "❌ Заявка #{req_id} отклонена.",
     "request_already_processed": "❌ Заявка уже обработана.",
     "key_revoked_callback": "✅ Ключ <code>{username}</code> отозван.",
-    "key_revoked_callback_notification": "⚠️ Ваш ключ <code>{username}</code> отозван администратором.",
+    "key_revoked_callback_notification": "⚠️ Ваш ключ <code>{username}</code> был отозван администратором.",
     "button_only_in_group": "⛔ Эта кнопка работает только в админской группе.",
     "no_permission": "⛔ У вас нет прав для обработки заявок.",
     "multiple_pending_requests": "У вас несколько активных заявок. Выберите, какую отменить:",
