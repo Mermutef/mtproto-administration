@@ -7,7 +7,7 @@ from app.handlers import (
     start_admin, adduser_command, users_command, revoke_command,
     button_callback, unknown
 )
-from app.handlers.admin_handlers import broadcast_command, sendto_command, cache_message_handler
+from app.handlers.admin_handlers import broadcast_command, sendto_command, cache_message_handler, resend_keys_command
 
 
 def main():
@@ -27,6 +27,7 @@ def main():
     app.add_handler(CommandHandler("revoke", revoke_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("broadcast", broadcast_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("sendto", sendto_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
+    app.add_handler(CommandHandler("resend_keys", resend_keys_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
 
     app.add_handler(CallbackQueryHandler(button_callback))
 

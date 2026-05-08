@@ -43,10 +43,11 @@ MESSAGES = {
         "/broadcast — рассылка (ответ на сообщение)\n\n"
         "Заявки приходят с кнопками Одобрить/Отклонить."
     ),
-    "adduser_usage": "❌ Использование: /adduser @username или /adduser логин",
+    "adduser_usage": "❌ Использование: /adduser @username [mtproto|xray|hysteria2] или /adduser логин",
     "user_not_found": "❌ Не найден @{username}. Убедитесь, что пользователь начал диалог с ботом.",
     "user_already_has_key": "⚠️ У @{tg_username} уже есть ключ: <code>{username}</code>",
-    "key_created_sent": "✅ Ключ для @{username} создан и отправлен.",
+    "mtp_key_created_sent": "✅ Ключ для @{username} создан и отправлен.",
+    "xray_key_created_sent": "✅ Xray-ключ для @{username} создан и отправлен.",
     "key_created_error": "❌ Ошибка при создании ключа: {error}",
     "admin_key_granted": (
         "✅ Администратор выдал вам ключ MTProto!\n"
@@ -63,11 +64,14 @@ MESSAGES = {
         "Логин: <code>{email}</code>\n"
         "Ссылка на подписку: {subscribe_url}\n\n"
         "<b>Как подключиться:</b>\n"
-        "1. Скачайте и установите Hiddify: https://hiddify.com\n"
+        "1. Скачайте и установите Hiddify:\n"
+        "   * Официальный сайт https://hiddify.com\n"
+        "   * AppStore https://apps.apple.com/us/app/hiddify-proxy-vpn/id6596777532\n"
+        "   * Google Play https://play.google.com/store/apps/details?id=app.hiddify.com\n"
         "2. Скопируйте ссылку на подписку.\n"
         "3. Откройте приложение, нажмите «+» в верхней правой части экрана.\n"
         "4. Вставьте скопированную ссылку на подписку (выше) и подтвердите (кнопка «Буфер обмена»).\n"
-        "4. После импорта выберите появившуюся конфигурацию и подключитесь.\n\n"
+        "5. После импорта выберите появившуюся конфигурацию и подключитесь.\n\n"
         "Приятного использования!\n\n"
         "P.S. Получить ссылку на подключение для клиентов, не поддерживающих механизм подписки, можно перейдя по ссылке подписки в браузере."
     ),
@@ -92,4 +96,9 @@ MESSAGES = {
     "cancel_selection_cancelled": "❎ Отмена отмены.",
     "cancel_request_not_found": "❌ Эта заявка уже обработана или не существует.",
     "cancel_request_invalid": "❓ Неверный номер заявки.",
+    "resend_keys_usage": "ℹ️ Использование: /resend_keys [all|mtproto|xray|hysteria2]",
+    "resend_keys_started": "⏳ Повторная рассылка ключей ({filter_protocol}) начата. Получателей: {total}...",
+    "resend_keys_done": "✅ Повторная рассылка завершена.\nУспешно: {success}\nОшибок: {failed}",
+    "resend_keys_no_users": "📭 Нет пользователей с активными ключами.",
+    "resend_keys_hysteria2_not_supported": "⚡ Hysteria2 пока не поддерживается.",
 }
