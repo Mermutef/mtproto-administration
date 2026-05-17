@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from app.config import DB_PATH, XRAY_INBOUND_ID, XRAY_SUB_URL_BASE
 from app.proxy_manager import generate_unique_username, create_user
+from app.locales.ru import MESSAGES
 from app.x_ui_manager import XUIClient
 
 _xui_per_thread = threading.local()
@@ -38,7 +39,7 @@ def create_mtproto_key(uid, username_hint=None):
 def create_xray_key(uid, username_hint=None):
     xui = get_xui_client()
     if not xui:
-        return False, "", "❌ Нет подключения к 3x-ui"
+        return False, "", MESSAGES["xui_unavailable"]
     if username_hint:
         base_name = re.sub(r'[^a-zA-Z0-9_]', '_', username_hint)
     else:
@@ -49,7 +50,6 @@ def create_xray_key(uid, username_hint=None):
         uuid_str = result["uuid"]
         sub_id = result["sub_id"]
 
-        # Сохраняем в БД
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         now = datetime.now().isoformat()

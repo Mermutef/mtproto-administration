@@ -32,7 +32,7 @@ async def handle_cancel_req(query, data, user_id, context):
 async def handle_req_service(query, data, user_id, user_name, context):
     protocol = data.split("_")[2]
     if protocol == "hysteria2":
-        await query.edit_message_text("⚡ Hysteria2 пока в разработке. Попробуйте позже.")
+        await query.edit_message_text(MESSAGES["hysteria2_not_supported"])
         return
 
     existing_keys = db.get_user_active_keys(user_id, protocol)

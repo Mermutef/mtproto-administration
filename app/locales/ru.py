@@ -1,8 +1,9 @@
 MESSAGES = {
+    # Пользовательские
     "start": (
         "🚀 <b>VPN Bot</b>\n\n"
         "Этот бот выдаёт ключи для доступа к прокси и VPN.\n\n"
-        "<b>Доступные команды:</b>\n"
+        "<b>Команды:</b>\n"
         "/request — подать заявку на получение ключа\n"
         "/status — проверить статус последней заявки\n"
         "/cancel — отменить текущую заявку\n\n"
@@ -35,25 +36,31 @@ MESSAGES = {
     "user_cancelled_request": "ℹ️ Пользователь {user_id} отменил заявку #{req_id}.",
     "not_in_private": "Пожалуйста, пишите мне в личные сообщения.",
     "unknown_command": "❓ Неизвестная команда. Используйте /start",
+
+    # Административные
     "admin_start": (
         "👑 <b>Административная панель</b>\n\n"
         "<b>Команды:</b>\n"
         "/users — список пользователей\n"
-        "/adduser @username [протокол] — выдать ключ (по умолчанию MTProto)\n"
+        "/adduser @username или логин — выдать ключ\n"
         "/revoke @username — отозвать ключ\n"
         "/sendto @username — переслать сообщение пользователю\n"
-        "/broadcast [фильтр] — рассылка сообщения всем/по протоколам\n"
-        "       Фильтры: all, mtproto, xray, hysteria2\n"
-        "/resend_keys [фильтр] — повторно отправить существующие ключи\n\n"
-        "Заявки приходят с кнопками ✅Одобрить / ❌Отклонить."
+        "/broadcast [all|mtproto|xray|hysteria2] — рассылка сообщения всем/по протоколам\n"
+        "/resend_keys [all|mtproto|xray|hysteria2] — повторно отправить существующие ключи\n\n"
     ),
     "adduser_usage": "❌ Использование: /adduser @username [mtproto|xray|hysteria2] или /adduser логин",
+    "adduser_choose_protocol": "Выберите протокол для выдачи ключа пользователю <code>{user}</code>:",
+    "hysteria2_not_supported": "⚡ Hysteria2 пока не поддерживается.",
     "user_not_found": "❌ Не найден @{username}. Убедитесь, что пользователь начал диалог с ботом.",
     "user_already_has_key": "⚠️ У @{tg_username} уже есть ключ: <code>{username}</code>",
+    "xray_already_has_key": "⚠️ У @{username} уже есть активный ключ Xray.",
+    "mtproto_user_already_exists": "❌ Логин '{username}' уже существует.",
+    "mtproto_user_created": "✅ Пользователь '{username}' добавлен.\nСсылка: {link}",
+    "empty_username": "❌ Логин не может быть пустым.",
     "mtp_key_created_sent": "✅ MTProto-ключ для @{username} создан и отправлен.",
     "xray_key_created_sent": "✅ Xray-ключ для @{username} создан и отправлен.",
     "key_created_error": "❌ Ошибка при создании ключа: {error}",
-    "admin_key_granted": (
+    "mtp_key_granted": (
         "✅ Администратор выдал вам ключ MTProto!\n"
         "Логин: <code>{username}</code>\n"
         "Ссылка для подключения (нажмите): {link}\n\n"
@@ -82,7 +89,7 @@ MESSAGES = {
     "users_list_empty": "📭 Список пользователей пуст.",
     "users_list_header": "<b>📋 Список пользователей:</b>\n",
     "users_list_item": "• <code>{username}</code> — {tg_info} (с {created})",
-    "users_list_footer": "\n\n<i>Чтобы отозвать ключ, используйте команду:</i>\n<code>/revoke u_name</code>\nНапример: <code>/revoke u_111111111_000000</code>",
+    "users_list_footer": "\n\n<i>Чтобы отозвать ключ, используйте команду:</i>\n<code>/revoke u_name</code>\nНапример: <code>/revoke someuser_12345678</code>",
     "revoke_usage": "❌ Использование: /revoke @username",
     "revoke_user_not_found": "❌ Пользователь @{identifier} не найден.",
     "revoke_success": "✅ Ключ для @{identifier} отозван.",
@@ -92,6 +99,7 @@ MESSAGES = {
     "approve_request_error": "❌ Ошибка создания ключа: {error}",
     "reject_request_success": "❌ Заявка #{req_id} отклонена.",
     "request_already_processed": "❌ Заявка уже обработана.",
+    "request_rejected_notification": "❌ Ваша заявка #{req_id} отклонена.",
     "key_revoked_callback": "✅ Ключ <code>{username}</code> отозван.",
     "key_revoked_callback_notification": "⚠️ Ваш ключ <code>{username}</code> был отозван администратором.",
     "button_only_in_group": "⛔ Эта кнопка работает только в админской группе.",
@@ -100,9 +108,30 @@ MESSAGES = {
     "cancel_selection_cancelled": "❎ Отмена отмены.",
     "cancel_request_not_found": "❌ Эта заявка уже обработана или не существует.",
     "cancel_request_invalid": "❓ Неверный номер заявки.",
+    "unknown_admin_command": "❓ Неизвестная команда. Доступно: /start, /adduser, /users, /revoke",
+
+    # sendto
+    "sendto_usage": "ℹ️ Использование: /sendto @username (в ответ на сообщение)",
+    "sendto_reply_prompt": "ℹ️ Ответьте на сообщение, которое хотите переслать.",
+    "sendto_user_not_found": "❌ Пользователь '{target}' не найден.",
+    "sendto_no_telegram_id": "❌ У пользователя '{target}' нет Telegram ID.",
+    "sendto_success": "✅ Сообщение отправлено пользователю '{target}'.",
+    "sendto_error": "❌ Не удалось отправить сообщение пользователю '{target}'.",
+
+    # broadcast
+    "broadcast_usage": "ℹ️ Ответьте на сообщение командой /broadcast [all|mtproto|xray|hysteria2]",
+    "invalid_broadcast_filter": "❌ Доступны только all, mtproto, xray или hysteria2",
+    "broadcast_no_users": "📭 Нет пользователей для рассылки.",
+    "broadcast_started": "⏳ Рассылка начата ({filter_protocol}). Получателей: {total}...",
+    "broadcast_done": "✅ Рассылка завершена ({filter_protocol}).\nУспешно: {success}\nОшибок: {failed}",
+
+    # resend_keys
     "resend_keys_usage": "ℹ️ Использование: /resend_keys [all|mtproto|xray|hysteria2]",
     "resend_keys_started": "⏳ Повторная рассылка ключей ({filter_protocol}) начата. Получателей: {total}...",
     "resend_keys_done": "✅ Повторная рассылка завершена.\nУспешно: {success}\nОшибок: {failed}",
     "resend_keys_no_users": "📭 Нет пользователей с активными ключами.",
     "resend_keys_hysteria2_not_supported": "⚡ Hysteria2 пока не поддерживается.",
+
+    # Системные
+    "xui_unavailable": "❌ Нет подключения к 3x-ui",
 }

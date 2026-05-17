@@ -2,6 +2,7 @@ import requests
 import json
 import uuid
 import time
+import secrets
 from typing import Optional, List, Dict, Any
 from app.config import XUI_BASE_URL, XUI_USERNAME, XUI_PASSWORD
 
@@ -15,6 +16,7 @@ class XUIClient:
     API_INBOUND_DEL_CLIENT = "/panel/api/inbounds/{inbound_id}/delClient/{client_id}"
     API_INBOUND_UPDATE = "/panel/api/inbounds/update/{inbound_id}"
     API_SERVER_STATUS = "/panel/api/server/status"
+    SUB_ID_LEN = 16
 
     def __init__(self, max_retries: int = 2, timeout: int = 30):
         self.base_url = XUI_BASE_URL.rstrip('/')
@@ -147,12 +149,15 @@ class XUIClient:
         if not uuid_str:
             uuid_str = str(uuid.uuid4())
 
+        sub_id = secrets.token_urlsafe(self.SUB_ID_LEN)
+
         settings = {
             "clients": [{
                 "email": email,
                 "id": uuid_str,
                 "flow": flow,
-                "enable": True
+                "enable": True,
+                "subId": sub_id
             }]
         }
 
@@ -165,7 +170,6 @@ class XUIClient:
         if not resp_data.get("success"):
             raise Exception(resp_data.get("msg", "Ошибка при добавлении клиента"))
 
-        sub_id = self.get_client_sub_id(inbound_id, email)
         return {"uuid": uuid_str, "sub_id": sub_id}
 
     def remove_client(self, inbound_id: int, email: str) -> bool:

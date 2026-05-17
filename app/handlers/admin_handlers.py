@@ -2,7 +2,7 @@ import sqlite3
 import asyncio
 import traceback
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
 import app.proxy_manager as proxy_manager
@@ -35,9 +35,22 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     arg = context.args[0]
-    protocol = context.args[1].lower() if len(context.args) > 1 else "mtproto"
-    if protocol not in ("mtproto", "xray", "hysteria2"):
-        await update.message.reply_text("❌ Неизвестный протокол. Используйте: mtproto, xray, hysteria2.")
+
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🛡️ MTProto", callback_data=f"add_mtproto_{arg}")],
+        [InlineKeyboardButton("🌐 Xray", callback_data=f"add_xray_{arg}")],
+        [InlineKeyboardButton("⚡ Hysteria2", callback_data=f"add_hysteria2_{arg}")]
+    ])
+    await update.message.reply_text(
+        MESSAGES["adduser_choose_protocol"].format(user=escape_html(arg)),
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+
+async def process_adduser_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, arg: str, protocol: str):
+    if protocol == "hysteria2":
+        await update.message.reply_text(MESSAGES["hysteria2_not_supported"])
         return
 
     if arg.startswith('@'):
@@ -49,7 +62,6 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(MESSAGES["user_not_found"].format(username=username))
             return
 
-        # Проверим, нет ли уже такого ключа
         if protocol == "mtproto":
             existing = db.get_user_by_telegram_id(user_id)
             if existing:
@@ -59,49 +71,56 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             success, (proxy_username, link), error = create_mtproto_key(user_id, username)
-        elif protocol == "xray":
-            keys = db.get_user_active_keys(user_id, 'xray')
-            if keys:
-                await update.message.reply_text(f"⚠️ У @{username} уже есть активный ключ Xray.")
-                return
-            success, (email, subscribe_url), error = create_xray_key(user_id, username)
-        elif protocol == "hysteria2":
-            await update.message.reply_text("Hysteria2 пока не поддерживается.")
-            return
-
-        if success:
-            if protocol == "mtproto":
+            if success:
                 await context.bot.send_message(
                     chat_id=user_id,
-                    text=MESSAGES["admin_key_granted"].format(username=escape_html(proxy_username), link=link),
+                    text=MESSAGES["mtp_key_granted"].format(username=escape_html(proxy_username), link=link),
                     parse_mode="HTML"
                 )
                 await update.message.reply_text(MESSAGES["mtp_key_created_sent"].format(username=username))
-            elif protocol == "xray":
+            else:
+                await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
+
+        elif protocol == "xray":
+            keys = db.get_user_active_keys(user_id, 'xray')
+            if keys:
+                await update.message.reply_text(MESSAGES["xray_already_has_key"].format(username=username))
+                return
+            success, (email, subscribe_url), error = create_xray_key(user_id, username)
+            if success:
                 await context.bot.send_message(
                     chat_id=user_id,
                     text=MESSAGES["xray_key_granted"].format(email=escape_html(email), subscribe_url=subscribe_url),
                     parse_mode="HTML"
                 )
-                await update.message.reply_text(f"✅ Xray-ключ для @{username} создан и отправлен.")
-        else:
-            await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
+                await update.message.reply_text(MESSAGES["xray_key_created_sent"].format(username=username))
+            else:
+                await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
+
     else:
-        if protocol != "mtproto":
-            await update.message.reply_text("❌ При указании логина доступен только протокол mtproto.")
-            return
         proxy_username = arg.strip()
         if not proxy_username:
-            await update.message.reply_text("❌ Логин не может быть пустым.")
+            await update.message.reply_text(MESSAGES["empty_username"])
             return
-        if proxy_username in proxy_manager.load_users():
-            await update.message.reply_text(f"❌ Логин '{proxy_username}' уже существует.")
-            return
-        success, link = proxy_manager.create_user(proxy_username, telegram_id="web")
-        if success:
-            await update.message.reply_text(f"✅ Пользователь '{proxy_username}' добавлен.\nСсылка: {link}")
-        else:
-            await update.message.reply_text(f"❌ Ошибка: {link}")
+
+        if protocol == "mtproto":
+            if proxy_username in proxy_manager.load_users():
+                await update.message.reply_text(MESSAGES["mtproto_user_already_exists"].format(username=proxy_username))
+                return
+            success, link = proxy_manager.create_user(proxy_username, telegram_id="web")
+            if success:
+                await update.message.reply_text(
+                    MESSAGES["mtproto_user_created"].format(username=proxy_username, link=link))
+            else:
+                await update.message.reply_text(MESSAGES["key_created_error"].format(error=link))
+
+        elif protocol == "xray":
+            success, (email, subscribe_url), error = create_xray_key("web", proxy_username)
+            if success:
+                await update.message.reply_text(
+                    f"✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}")
+            else:
+                await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
 
 
 async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -216,11 +235,11 @@ async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("ℹ️ Использование: /sendto @username (в ответ на сообщение)")
+        await update.message.reply_text(MESSAGES["sendto_usage"])
         return
 
     if not update.message.reply_to_message:
-        await update.message.reply_text("ℹ️ Ответьте на сообщение, которое хотите переслать.")
+        await update.message.reply_text(MESSAGES["sendto_reply_prompt"])
         return
 
     target = context.args[0].lstrip('@')
@@ -232,21 +251,21 @@ async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not row:
-        await update.message.reply_text(f"❌ Пользователь '{target}' не найден.")
+        await update.message.reply_text(MESSAGES["sendto_user_not_found"].format(target=target))
         return
 
     tid = row[0]
     if tid in ('unknown', 'web', '—'):
-        await update.message.reply_text(f"❌ У пользователя '{target}' нет Telegram ID.")
+        await update.message.reply_text(MESSAGES["sendto_no_telegram_id"].format(target=target))
         return
 
     source_chat_id = update.effective_chat.id
     success = await _copy_to_user(int(tid), source_chat_id,
                                   update.message.reply_to_message, context)
     if success:
-        await update.message.reply_text(f"✅ Сообщение отправлено пользователю '{target}'.")
+        await update.message.reply_text(MESSAGES["sendto_success"].format(target=target))
     else:
-        await update.message.reply_text(f"❌ Не удалось отправить сообщение пользователю '{target}'.")
+        await update.message.reply_text(MESSAGES["sendto_error"].format(target=target))
 
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -256,13 +275,12 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ У вас нет прав администратора.")
         return
     if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "ℹ️ Ответьте на сообщение командой /broadcast [фильтр: all, mtproto, xray, hysteria2]")
+        await update.message.reply_text(MESSAGES["broadcast_usage"])
         return
 
     filter_protocol = context.args[0].lower() if context.args else "all"
     if filter_protocol not in ("all", "mtproto", "xray", "hysteria2"):
-        await update.message.reply_text("Фильтр должен быть all, mtproto, xray или hysteria2")
+        await update.message.reply_text(MESSAGES["invalid_broadcast_filter"])
         return
 
     if filter_protocol == "all":
@@ -271,11 +289,12 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         unique_ids = get_user_ids_by_protocol(filter_protocol)
 
     if not unique_ids:
-        await update.message.reply_text("📭 Нет пользователей для рассылки.")
+        await update.message.reply_text(MESSAGES["broadcast_no_users"])
         return
 
     total = len(unique_ids)
-    status_msg = await update.message.reply_text(f"⏳ Рассылка начата ({filter_protocol}). Получателей: {total}...")
+    status_msg = await update.message.reply_text(
+        MESSAGES["broadcast_started"].format(filter_protocol=filter_protocol, total=total))
     source_chat_id = update.effective_chat.id
     original = update.message.reply_to_message
 
@@ -290,10 +309,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(0.15)
 
     await status_msg.edit_text(
-        f"✅ Рассылка завершена ({filter_protocol}).\n"
-        f"Успешно: {success}\n"
-        f"Ошибок: {failed}"
-    )
+        MESSAGES["broadcast_done"].format(filter_protocol=filter_protocol, success=success, failed=failed))
 
 
 async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -377,7 +393,7 @@ async def send_existing_key(chat_id: int, protocol: str, key_data: dict, context
                 return False
             username = row[0]
             link = proxy_manager.get_proxy_link(secret)
-            text = MESSAGES["admin_key_granted"].format(username=escape_html(username), link=link)
+            text = MESSAGES["mtp_key_granted"].format(username=escape_html(username), link=link)
             await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
             return True
         elif protocol == "xray":
@@ -386,7 +402,7 @@ async def send_existing_key(chat_id: int, protocol: str, key_data: dict, context
                 return False
             sub_id = key_data.get("sub_id")
             if not sub_id:
-                sub_id = get_or_update_sub_id(email)  # подстрахуемся
+                sub_id = get_or_update_sub_id(email)
             subscribe_url = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
             text = MESSAGES["xray_key_granted"].format(email=escape_html(email), subscribe_url=subscribe_url)
             await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")

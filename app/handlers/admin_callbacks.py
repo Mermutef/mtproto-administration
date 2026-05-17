@@ -22,7 +22,7 @@ async def handle_approve(query, data, context):
             try:
                 await context.bot.send_message(
                     chat_id=int(uid),
-                    text=MESSAGES["admin_key_granted"].format(username=escape_html(proxy_username), link=link),
+                    text=MESSAGES["mtp_key_granted"].format(username=escape_html(proxy_username), link=link),
                     parse_mode="HTML"
                 )
             except Exception as e:
@@ -57,7 +57,8 @@ async def handle_reject(query, data, context):
     uid, user_name, _, _ = req
     db.update_request_status(req_id, "rejected")
     try:
-        await context.bot.send_message(chat_id=int(uid), text=f"❌ Ваша заявка #{req_id} отклонена.")
+        await context.bot.send_message(chat_id=int(uid),
+                                       text=MESSAGES["request_rejected_notification"].format(req_id=req_id))
     except:
         pass
     await query.edit_message_text(MESSAGES["reject_request_success"].format(req_id=req_id))
@@ -86,3 +87,84 @@ async def handle_revoke(query, data, context):
                 pass
     else:
         await query.edit_message_text(MESSAGES["revoke_error"])
+
+
+async def handle_add_key(query, data, context):
+    parts = data.split('_', 2)
+    if len(parts) != 3:
+        await query.edit_message_text("❌ Неверный формат команды.")
+        return
+    _, protocol, identifier = parts
+    if protocol not in ("mtproto", "xray", "hysteria2"):
+        await query.edit_message_text(MESSAGES["unknown_protocol"])
+        return
+
+    if protocol == "hysteria2":
+        await query.edit_message_text(MESSAGES["hysteria2_not_supported"])
+        return
+
+    if identifier.startswith('@'):
+        username = identifier[1:]
+        try:
+            chat = await context.bot.get_chat(f"@{username}")
+            user_id = chat.id
+        except:
+            await query.edit_message_text(MESSAGES["user_not_found"].format(username=username))
+            return
+
+        if protocol == "mtproto":
+            existing = db.get_user_by_telegram_id(user_id)
+            if existing:
+                await query.edit_message_text(
+                    MESSAGES["user_already_has_key"].format(tg_username=username, username=escape_html(existing)),
+                    parse_mode="HTML"
+                )
+                return
+            success, (proxy_username, link), error = create_mtproto_key(user_id, username)
+            if success:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=MESSAGES["mtp_key_granted"].format(username=escape_html(proxy_username), link=link),
+                    parse_mode="HTML"
+                )
+                await query.edit_message_text(MESSAGES["mtp_key_created_sent"].format(username=username))
+            else:
+                await query.edit_message_text(MESSAGES["key_created_error"].format(error=error))
+
+        elif protocol == "xray":
+            keys = db.get_user_active_keys(user_id, 'xray')
+            if keys:
+                await query.edit_message_text(MESSAGES["xray_already_has_key"].format(username=username))
+                return
+            success, (email, subscribe_url), error = create_xray_key(user_id, username)
+            if success:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=MESSAGES["xray_key_granted"].format(email=escape_html(email), subscribe_url=subscribe_url),
+                    parse_mode="HTML"
+                )
+                await query.edit_message_text(MESSAGES["xray_key_created_sent"].format(username=username))
+            else:
+                await query.edit_message_text(MESSAGES["key_created_error"].format(error=error))
+
+    else:
+        proxy_username = identifier.strip()
+        if not proxy_username:
+            await query.edit_message_text(MESSAGES["empty_username"])
+            return
+        if protocol == "mtproto":
+            if proxy_username in proxy_manager.load_users():
+                await query.edit_message_text(MESSAGES["mtproto_user_already_exists"].format(username=proxy_username))
+                return
+            success, link = proxy_manager.create_user(proxy_username, telegram_id="web")
+            if success:
+                await query.edit_message_text(
+                    MESSAGES["mtproto_user_created"].format(username=proxy_username, link=link))
+            else:
+                await query.edit_message_text(MESSAGES["key_created_error"].format(error=link))
+        elif protocol == "xray":
+            success, (email, subscribe_url), error = create_xray_key("web", proxy_username)
+            if success:
+                await query.edit_message_text(f"✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}")
+            else:
+                await query.edit_message_text(MESSAGES["key_created_error"].format(error=error))
