@@ -141,15 +141,23 @@ def get_mtproto_secret(username):
     return row[0] if row else None
 
 
-def get_user_active_keys(telegram_id, protocol):
+def get_user_active_keys(telegram_id, protocol=None):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute('''
-        SELECT k.key_data
-        FROM keys k
-        JOIN users u ON k.user_id = u.id
-        WHERE u.telegram_id = ? AND k.protocol = ? AND k.status = 'active'
-    ''', (str(telegram_id), protocol))
+    if protocol:
+        c.execute('''
+            SELECT k.key_data
+            FROM keys k
+            JOIN users u ON k.user_id = u.id
+            WHERE u.telegram_id = ? AND k.protocol = ? AND k.status = 'active'
+        ''', (str(telegram_id), protocol))
+    else:
+        c.execute('''
+            SELECT k.key_data
+            FROM keys k
+            JOIN users u ON k.user_id = u.id
+            WHERE u.telegram_id = ? AND k.status = 'active'
+        ''', (str(telegram_id),))
     rows = c.fetchall()
     conn.close()
     keys = []
@@ -191,3 +199,33 @@ def get_media_group_message_ids(chat_id: int, media_group_id: str) -> list[int]:
     ids = [row[0] for row in c.fetchall()]
     conn.close()
     return ids
+
+
+def get_users_with_active_keys():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT u.username, u.telegram_id, u.created_at
+        FROM users u
+        JOIN keys k ON u.id = k.user_id
+        WHERE k.status = 'active'
+        ORDER BY u.created_at DESC
+    """)
+    users = c.fetchall()
+    conn.close()
+    return users
+
+
+def get_users_with_active_keys_for_protocol(protocol):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT DISTINCT u.username, u.telegram_id, u.created_at
+        FROM users u
+        JOIN keys k ON u.id = k.user_id
+        WHERE k.status = 'active' AND k.protocol = ?
+        ORDER BY u.created_at DESC
+    """, (protocol,))
+    users = c.fetchall()
+    conn.close()
+    return users

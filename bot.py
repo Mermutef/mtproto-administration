@@ -5,9 +5,10 @@ import app.proxy_manager as proxy_manager
 from app.handlers import (
     start, request_key, status_command, cancel_command,
     start_admin, adduser_command, users_command, revoke_command,
-    button_callback, unknown
+    button_callback, unknown, mykeys_command
 )
-from app.handlers.admin_handlers import broadcast_command, sendto_command, cache_message_handler, resend_keys_command
+from app.handlers.admin_handlers import broadcast_command, sendto_command, cache_message_handler, resend_keys_command, \
+    info_command
 
 
 def main():
@@ -20,6 +21,7 @@ def main():
     app.add_handler(CommandHandler("request", request_key, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("status", status_command, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("cancel", cancel_command, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("mykeys", mykeys_command, filters=filters.ChatType.PRIVATE))
 
     app.add_handler(CommandHandler("start", start_admin, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("adduser", adduser_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
@@ -28,6 +30,7 @@ def main():
     app.add_handler(CommandHandler("broadcast", broadcast_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("sendto", sendto_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
     app.add_handler(CommandHandler("resend_keys", resend_keys_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
+    app.add_handler(CommandHandler("info", info_command, filters=filters.Chat(chat_id=ADMIN_GROUP_ID)))
 
     app.add_handler(CallbackQueryHandler(button_callback))
 

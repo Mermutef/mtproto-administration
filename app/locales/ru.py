@@ -5,6 +5,7 @@ MESSAGES = {
         "Этот бот выдаёт ключи для доступа к прокси и VPN.\n\n"
         "<b>Команды:</b>\n"
         "/request — подать заявку на получение ключа\n"
+        "/mykeys — посмотреть свои ключи\n"
         "/status — проверить статус последней заявки\n"
         "/cancel — отменить текущую заявку\n\n"
         "После одобрения администратором ключ придёт в этот чат.\n\n"
@@ -45,7 +46,8 @@ MESSAGES = {
         "/revoke @username — отозвать ключ\n"
         "/sendto @username — переслать сообщение пользователю\n"
         "/broadcast [all|mtproto|xray|hysteria2] — рассылка\n"
-        "/resend_keys [all|mtproto|xray|hysteria2] — повторная рассылка ключей\n\n"
+        "/resend_keys [all|mtproto|xray|hysteria2] — повторная рассылка ключей\n"
+        "/info @username — информация о пользователе\n\n"
         "<i>Доступные протоколы: {protocols}</i>"
     ),
     "adduser_usage": "❌ Использование: /adduser @username [mtproto|xray|hysteria2] или /adduser логин",
@@ -88,6 +90,42 @@ MESSAGES = {
         "Приятного использования!\n\n"
         "P.S. Вы также можете открыть ссылку на подписку в браузере, чтобы получить ключ для других приложений."
     ),
+
+    # Список пользователей
+    "users_choose_protocol": "Выберите протокол для просмотра пользователей:",
+    "users_page": "👥 Пользователи ({protocol}) – страница {page}/{total_pages}",
+    "users_no_users": "📭 Нет пользователей с активными ключами.",
+    "pagination_prev": "⬅️ Назад",
+    "pagination_next": "➡️ Вперед",
+
+    # Информация о пользователе
+    "info_usage": "ℹ️ Использование: /info @username",
+    "user_info_profile": (
+        "👤 <b>{username}</b>\n"
+        "Telegram ID: <code>{telegram_id}</code>\n"
+        "Создан: {created}\n\n"
+        "<b>Ключи:</b>"
+    ),
+    "user_info_no_keys": "🔑 Нет ключей.",
+
+    "user_info_key": (
+        "\n<b>{protocol}</b>\n"
+        "Логин: <code>{login}</code>\n"
+        "Ссылка: {link}\n"
+        "Статус: {status}\n"
+        "Создан: {created}"
+    ),
+
+    # Мои ключи
+    "my_keys_header": "🔑 Ваши активные ключи:\n\n",
+    "my_keys_no_keys": "У вас нет активных ключей.",
+    "my_keys_key": (
+        "<b>{protocol}</b>\n"
+        "Логин: <code>{login}</code>\n"
+        "Ссылка: {link}\n\n"
+    ),
+
+    # Остальное
     "users_list_empty": "📭 Список пользователей пуст.",
     "users_list_header": "<b>📋 Список пользователей:</b>\n",
     "users_list_item": "• <code>{username}</code> — {tg_info} (с {created})",
@@ -103,6 +141,7 @@ MESSAGES = {
     "revoke_no_active_keys": "❌ У пользователя {identifier} нет активных ключей.",
     "revoke_mtproto_success": "✅ MTProto-ключ <code>{username}</code> отозван.",
     "revoke_xray_success": "✅ Xray-ключ <code>{email}</code> отозван.",
+    "revoke_canceled": "❎ Отзыв отменён.",
     "key_revoked_notification": "⚠️ Ваш ключ был отозван администратором.",
     "approve_request_success": "✅ Заявка #{req_id} одобрена. Ключ отправлен пользователю.",
     "approve_request_error": "❌ Ошибка создания ключа: {error}",
@@ -118,10 +157,6 @@ MESSAGES = {
     "cancel_request_not_found": "❌ Эта заявка уже обработана или не существует.",
     "cancel_request_invalid": "❓ Неверный номер заявки.",
     "unknown_admin_command": "❓ Неизвестная команда. Доступно: /start, /adduser, /users, /revoke",
-    "no_available_protocols": "❌ Нет доступных протоколов.",
-    "invalid_callback_format": "❌ Неверный формат команды.",
-    "revoke_canceled": "❎ Отзыв отменён.",
-    "xray_client_added": "✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}",
 
     # sendto
     "sendto_usage": "ℹ️ Использование: /sendto @username (в ответ на сообщение)",
@@ -146,4 +181,7 @@ MESSAGES = {
 
     # Системные
     "xui_unavailable": "❌ Нет подключения к 3x-ui",
+    "no_available_protocols": "❌ Нет доступных протоколов.",
+    "invalid_callback_format": "❌ Неверный формат команды.",
+    "xray_client_added": "✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}",
 }

@@ -1,12 +1,15 @@
+import json
 import sqlite3
 import asyncio
 import traceback
+from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
 import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, XRAY_INBOUND_ID, get_active_protocols
+from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, XRAY_INBOUND_ID, get_active_protocols, \
+    USERS_PER_PAGE
 from app.db import get_user_active_keys
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
@@ -139,30 +142,166 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ У вас нет прав администратора.")
         return
-    users = db.get_all_users()
+
+    keyboard = [
+        [InlineKeyboardButton("🛡️ MTProto", callback_data="users_list_mtproto_0"),
+         InlineKeyboardButton("🌐 Xray", callback_data="users_list_xray_0")],
+        [InlineKeyboardButton("👥 Все", callback_data="users_list_all_0")]
+    ]
+    await update.message.reply_text(MESSAGES["users_choose_protocol"],
+                                    reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def users_show_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, protocol: str, page: int):
+    if protocol == "all":
+        users = db.get_users_with_active_keys()
+    else:
+        users = db.get_users_with_active_keys_for_protocol(protocol)
+
     if not users:
-        await update.message.reply_text(MESSAGES["users_list_empty"])
+        await update_or_query.edit_message_text(MESSAGES["users_no_users"])
         return
-    message_lines = [MESSAGES["users_list_header"]]
-    for uname, tid, created in users:
-        if tid != 'unknown':
-            try:
-                chat = await context.bot.get_chat(int(tid))
-                tg_uname = f"@{chat.username}" if chat.username else tid
-            except:
-                tg_uname = tid
-        else:
-            tg_uname = "unknown"
-        message_lines.append(
-            MESSAGES["users_list_item"].format(
-                username=escape_html(uname),
-                tg_info=escape_html(str(tg_uname)),
-                created=created[:10]
+
+    total_pages = (len(users) + USERS_PER_PAGE - 1) // USERS_PER_PAGE
+    page = max(0, min(page, total_pages - 1))
+    start = page * USERS_PER_PAGE
+    page_users = users[start:start + USERS_PER_PAGE]
+
+    buttons = []
+    for uname, tid, created in page_users:
+        buttons.append([InlineKeyboardButton(uname, callback_data=f"user_info_{uname}")])
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(MESSAGES["pagination_prev"], callback_data=f"users_page_{protocol}_{page - 1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(MESSAGES["pagination_next"], callback_data=f"users_page_{protocol}_{page + 1}"))
+    if nav:
+        buttons.append(nav)
+
+    text = MESSAGES["users_page"].format(protocol=protocol.upper(), page=page + 1, total_pages=total_pages)
+    await update_or_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
+
+
+async def user_info_callback(query, context, username):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT telegram_id, created_at FROM users WHERE username = ?", (username,))
+    row = c.fetchone()
+    if not row:
+        await query.edit_message_text(MESSAGES["user_not_found"])
+        conn.close()
+        return
+    telegram_id, created = row
+    created_str = _format_date(created)
+
+    c.execute(
+        "SELECT protocol, key_data, status, created_at FROM keys WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+        (username,))
+    keys = c.fetchall()
+    conn.close()
+
+    msg = MESSAGES["user_info_profile"].format(username=escape_html(username), telegram_id=telegram_id,
+                                               created=created_str)
+    if not keys:
+        msg += "\n" + MESSAGES["user_info_no_keys"]
+    else:
+        for protocol, key_data_str, status, created_key in keys:
+            key_data = json.loads(key_data_str)
+            if protocol == 'mtproto':
+                login = username
+                secret = key_data.get('secret', '')
+                link = proxy_manager.get_proxy_link(secret) if secret else "—"
+            elif protocol == 'xray':
+                login = key_data.get('email', '—')
+                sub_id = key_data.get('sub_id')
+                if not sub_id:
+                    sub_id = get_or_update_sub_id(login)
+                link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else "—"
+            else:
+                login = '—'
+                link = "—"
+            created_key_str = _format_date(created_key)
+            msg += MESSAGES["user_info_key"].format(
+                protocol=protocol.upper(),
+                login=login,
+                status=status,
+                created=created_key_str,
+                link=link
             )
-        )
-    message_lines.append(MESSAGES["users_list_footer"])
-    message_text = "\n".join(message_lines)
-    await update.message.reply_text(message_text, parse_mode="HTML")
+    await query.edit_message_text(msg, parse_mode="HTML")
+
+
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.id != ADMIN_GROUP_ID:
+        return
+    if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        return
+    if not context.args:
+        await update.message.reply_text(MESSAGES["info_usage"])
+        return
+    username = context.args[0].lstrip('@')
+    await user_info_direct(update, context, username)
+
+
+async def user_info_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, username: str):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT telegram_id, created_at FROM users WHERE username = ?", (username,))
+    row = c.fetchone()
+    if not row:
+        await update.message.reply_text(MESSAGES["user_not_found"])
+        conn.close()
+        return
+    telegram_id, created = row
+    created_str = _format_date(created)
+
+    c.execute(
+        "SELECT protocol, key_data, status, created_at FROM keys WHERE user_id = (SELECT id FROM users WHERE username = ?)",
+        (username,))
+    keys = c.fetchall()
+    conn.close()
+
+    msg = MESSAGES["user_info_profile"].format(username=escape_html(username), telegram_id=telegram_id,
+                                               created=created_str)
+    if not keys:
+        msg += "\n" + MESSAGES["user_info_no_keys"]
+    else:
+        for protocol, key_data_str, status, created_key in keys:
+            key_data = json.loads(key_data_str)
+            if protocol == 'mtproto':
+                login = username
+                secret = key_data.get('secret', '')
+                link = proxy_manager.get_proxy_link(secret) if secret else "—"
+            elif protocol == 'xray':
+                login = key_data.get('email', '—')
+                sub_id = key_data.get('sub_id')
+                if not sub_id:
+                    sub_id = get_or_update_sub_id(login)
+                link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else "—"
+            else:
+                login = '—'
+                link = "—"
+            created_key_str = _format_date(created_key)
+            msg += MESSAGES["user_info_key"].format(
+                protocol=protocol.upper(),
+                login=login,
+                status=status,
+                created=created_key_str,
+                link=link
+            )
+    await update.message.reply_text(msg, parse_mode="HTML")
+
+
+def _format_date(iso_string):
+    if not iso_string:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(iso_string)
+        return dt.strftime('%d.%m.%Y %H:%M')
+    except:
+        return iso_string
 
 
 async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

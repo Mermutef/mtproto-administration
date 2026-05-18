@@ -47,3 +47,5 @@ FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
 MTP_ENABLED = _env_bool("MTP_ENABLED", True)
 XRAY_ENABLED = _env_bool("XRAY_ENABLED", False) and XRAY_INBOUND_ID > 0
 HYSTERIA2_ENABLED = _env_bool("HYSTERIA2_ENABLED", False)
+
+USERS_PER_PAGE = int(os.getenv("USERS_PER_PAGE", 10))

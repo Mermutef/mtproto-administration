@@ -2,7 +2,7 @@ import sqlite3
 import app.db as db
 import app.proxy_manager as proxy_manager
 from app.config import DB_PATH, get_active_protocols
-from app.handlers.admin_handlers import _revoke_key_by_protocol
+from app.handlers.admin_handlers import _revoke_key_by_protocol, users_show_page, user_info_callback
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
 from app.services.key_service import create_mtproto_key, create_xray_key
@@ -168,3 +168,11 @@ async def handle_add_key(query, data, context):
                     MESSAGES["xray_client_added"].format(email=email, subscribe_url=subscribe_url))
             else:
                 await query.edit_message_text(MESSAGES["key_created_error"].format(error=error))
+
+
+async def handle_users_page(query, context, protocol, page):
+    await users_show_page(query, context, protocol, page)
+
+
+async def handle_user_info(query, context, username):
+    await user_info_callback(query, context, username)

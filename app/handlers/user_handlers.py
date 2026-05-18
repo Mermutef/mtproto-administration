@@ -1,8 +1,9 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
+from app import proxy_manager
 from app.locales.ru import MESSAGES
-from app.config import ADMIN_GROUP_ID, get_active_protocols
+from app.config import ADMIN_GROUP_ID, get_active_protocols, XRAY_SUB_URL_BASE
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,3 +91,29 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         MESSAGES["multiple_pending_requests"],
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+
+async def mykeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private":
+        await update.message.reply_text(MESSAGES["not_in_private"])
+        return
+    user_id = update.effective_user.id
+    msg = MESSAGES["my_keys_header"]
+    found = False
+    for proto in get_active_protocols():
+        keys = db.get_user_active_keys(user_id, proto)
+        for key in keys:
+            found = True
+            if proto == 'mtproto':
+                login = key.get('username', '—')
+                link = proxy_manager.get_proxy_link(key['secret'])
+            elif proto == 'xray':
+                login = key.get('email', '—')
+                sub_id = key.get('sub_id', '')
+                link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
+            else:
+                continue
+            msg += MESSAGES["my_keys_key"].format(protocol=proto.upper(), login=login, link=link)
+    if not found:
+        msg = MESSAGES["my_keys_no_keys"]
+    await update.message.reply_text(msg, parse_mode="HTML")

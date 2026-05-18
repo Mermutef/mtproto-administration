@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from .private_callbacks import handle_cancel_req, handle_req_service
-from .admin_callbacks import handle_approve, handle_reject, handle_add_key
+from .admin_callbacks import handle_approve, handle_reject, handle_add_key, handle_users_page, handle_user_info
 from app.config import ADMIN_GROUP_ID, ADMIN_IDS
 from app.locales.ru import MESSAGES
 
@@ -41,6 +41,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "revoke_cancel":
         from .admin_callbacks import handle_revoke_cancel
         await handle_revoke_cancel(query, data, context)
+        return
+
+    if data.startswith("users_list_") or data.startswith("users_page_"):
+        parts = data.split("_")
+        protocol = parts[2]
+        page = int(parts[3])
+        await handle_users_page(query, context, protocol, page)
+        return
+
+    if data.startswith("user_info_"):
+        username = data[len("user_info_"):]
+        await handle_user_info(query, context, username)
         return
 
     if data.startswith("add_"):
