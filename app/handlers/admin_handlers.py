@@ -6,13 +6,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
 import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE
+from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, XRAY_INBOUND_ID
 from app.db import get_user_active_keys
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
 from app.services.key_service import create_mtproto_key, create_xray_key
 from app.services.broadcast_service import get_user_ids_by_protocol
-from app.services.key_service import get_or_update_sub_id
+from app.services.key_service import get_or_update_sub_id, get_xui_client
 
 
 async def start_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,25 +164,112 @@ async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(MESSAGES["revoke_usage"])
         return
+
     identifier = context.args[0].lstrip('@')
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT username, telegram_id FROM users WHERE telegram_id = ? OR username = ?", (identifier, identifier))
+    c.execute("SELECT username FROM users WHERE telegram_id = ? OR username = ?", (identifier, identifier))
     row = c.fetchone()
     conn.close()
+
     if not row:
         await update.message.reply_text(MESSAGES["revoke_user_not_found"].format(identifier=identifier))
         return
-    proxy_username, tid = row
-    if proxy_manager.delete_user(proxy_username):
-        await update.message.reply_text(MESSAGES["revoke_success"].format(identifier=identifier))
-        if tid and tid not in ('unknown', 'web'):
-            try:
-                await context.bot.send_message(chat_id=int(tid), text=MESSAGES["key_revoked_notification"])
-            except:
-                pass
-    else:
-        await update.message.reply_text(MESSAGES["revoke_error"])
+
+    username = row[0]
+    await _show_revoke_keyboard(update, username)
+
+
+async def _show_revoke_keyboard(update: Update, username: str):
+    """Показывает клавиатуру с активными ключами пользователя для выборочного отзыва."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        SELECT k.protocol, json_extract(k.key_data, '$.email') as email, k.key_data
+        FROM keys k
+        JOIN users u ON k.user_id = u.id
+        WHERE u.username = ? AND k.status = 'active'
+    """, (username,))
+    active_keys = c.fetchall()
+    conn.close()
+
+    if not active_keys:
+        await update.message.reply_text(MESSAGES["revoke_no_active_keys"].format(identifier=username))
+        return
+
+    keyboard_buttons = []
+    for protocol, email, key_data_str in active_keys:
+        if protocol == 'mtproto':
+            label = MESSAGES["revoke_mtproto_btn"].format(username=username)
+            callback_data = f"revoke_mtproto_{username}"
+        elif protocol == 'xray':
+            email_val = email if email else username
+            label = MESSAGES["revoke_xray_btn"].format(email=email_val)
+            callback_data = f"revoke_xray_{email_val}"
+        else:
+            continue  # hysteria2 пока нет
+        keyboard_buttons.append([InlineKeyboardButton(label, callback_data=callback_data)])
+
+    keyboard_buttons.append([InlineKeyboardButton(MESSAGES["revoke_cancel_btn"], callback_data="revoke_cancel")])
+
+    await update.message.reply_text(
+        MESSAGES["revoke_select_key"].format(user=escape_html(username)),
+        reply_markup=InlineKeyboardMarkup(keyboard_buttons),
+        parse_mode="HTML"
+    )
+
+
+async def _revoke_key_by_protocol(username: str, protocol: str, update_or_query, context, email: str = None):
+    if protocol == 'mtproto':
+        if proxy_manager.delete_user(username):
+            await update_or_query.edit_message_text(
+                MESSAGES["revoke_mtproto_success"].format(username=escape_html(username)),
+                parse_mode="HTML"
+            )
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT telegram_id FROM users WHERE username = ?", (username,))
+            row = c.fetchone()
+            conn.close()
+            if row and row[0] not in ('unknown', 'web', '—'):
+                try:
+                    await context.bot.send_message(chat_id=int(row[0]), text=MESSAGES["key_revoked_notification"])
+                except:
+                    pass
+        else:
+            await update_or_query.edit_message_text(MESSAGES["revoke_error"])
+
+    elif protocol == 'xray':
+        xui = get_xui_client()
+        if not xui:
+            await update_or_query.edit_message_text(MESSAGES["xui_unavailable"])
+            return
+        try:
+            email_to_delete = email if email else username
+            xui.remove_client(XRAY_INBOUND_ID, email_to_delete)
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute(
+                "UPDATE keys SET status = 'revoked' WHERE user_id = (SELECT id FROM users WHERE username = ?) AND protocol = 'xray' AND status = 'active'",
+                (username,))
+            conn.commit()
+            conn.close()
+            await update_or_query.edit_message_text(
+                MESSAGES["revoke_xray_success"].format(email=escape_html(email_to_delete)),
+                parse_mode="HTML"
+            )
+            conn = sqlite3.connect(DB_PATH)
+            c = conn.cursor()
+            c.execute("SELECT telegram_id FROM users WHERE username = ?", (username,))
+            row = c.fetchone()
+            conn.close()
+            if row and row[0] not in ('unknown', 'web', '—'):
+                try:
+                    await context.bot.send_message(chat_id=int(row[0]), text=MESSAGES["key_revoked_notification"])
+                except:
+                    pass
+        except Exception as e:
+            await update_or_query.edit_message_text(MESSAGES["revoke_error"] + f": {e}")
 
 
 async def cache_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

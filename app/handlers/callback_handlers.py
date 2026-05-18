@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 from .private_callbacks import handle_cancel_req, handle_req_service
-from .admin_callbacks import handle_approve, handle_reject, handle_revoke, handle_add_key
+from .admin_callbacks import handle_approve, handle_reject, handle_add_key
 from app.config import ADMIN_GROUP_ID, ADMIN_IDS
 from app.locales.ru import MESSAGES
 
@@ -30,14 +30,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(MESSAGES["no_permission"])
         return
 
+    if data.startswith("revoke_mtproto_"):
+        from .admin_callbacks import handle_revoke_mtproto
+        await handle_revoke_mtproto(query, data, context)
+        return
+    if data.startswith("revoke_xray_"):
+        from .admin_callbacks import handle_revoke_xray
+        await handle_revoke_xray(query, data, context)
+        return
+    if data == "revoke_cancel":
+        from .admin_callbacks import handle_revoke_cancel
+        await handle_revoke_cancel(query, data, context)
+        return
+
     if data.startswith("add_"):
         await handle_add_key(query, data, context)
     elif data.startswith("approve_"):
         await handle_approve(query, data, context)
     elif data.startswith("reject_"):
         await handle_reject(query, data, context)
-    elif data.startswith("revoke_"):
-        await handle_revoke(query, data, context)
 
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -2,6 +2,7 @@ import sqlite3
 import app.db as db
 import app.proxy_manager as proxy_manager
 from app.config import DB_PATH
+from app.handlers.admin_handlers import _revoke_key_by_protocol
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
 from app.services.key_service import create_mtproto_key, create_xray_key
@@ -64,29 +65,31 @@ async def handle_reject(query, data, context):
     await query.edit_message_text(MESSAGES["reject_request_success"].format(req_id=req_id))
 
 
-async def handle_revoke(query, data, context):
-    proxy_username = data.split("_")[1]
-    if proxy_manager.delete_user(proxy_username):
-        await query.edit_message_text(
-            MESSAGES["key_revoked_callback"].format(username=escape_html(proxy_username)),
-            parse_mode="HTML"
-        )
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT telegram_id FROM users WHERE username = ?", (proxy_username,))
-        row = c.fetchone()
-        conn.close()
-        if row and row[0] not in ('unknown', 'web'):
-            try:
-                await context.bot.send_message(
-                    chat_id=int(row[0]),
-                    text=MESSAGES["key_revoked_callback_notification"].format(username=escape_html(proxy_username)),
-                    parse_mode="HTML"
-                )
-            except:
-                pass
+async def handle_revoke_mtproto(query, data, context):
+    # data format: revoke_mtproto_<username>
+    username = data.split("_", 2)[2]
+    await _revoke_key_by_protocol(username, 'mtproto', query, context)
+
+
+async def handle_revoke_xray(query, data, context):
+    # data format: revoke_xray_<email>
+    email = data.split("_", 2)[2]
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute(
+        "SELECT u.username FROM users u JOIN keys k ON u.id = k.user_id WHERE k.protocol='xray' AND json_extract(k.key_data, '$.email') = ?",
+        (email,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        username = row[0]
+        await _revoke_key_by_protocol(username, 'xray', query, context, email=email)
     else:
-        await query.edit_message_text(MESSAGES["revoke_error"])
+        await query.edit_message_text(MESSAGES["revoke_user_not_found"].format(identifier=email))
+
+
+async def handle_revoke_cancel(query, data, context):
+    await query.edit_message_text("❎ Отзыв отменён.")
 
 
 async def handle_add_key(query, data, context):
