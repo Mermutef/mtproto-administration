@@ -1,7 +1,7 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 import app.db as db
 import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, XRAY_SUB_URL_BASE
+from app.config import ADMIN_GROUP_ID, XRAY_SUB_URL_BASE, get_active_protocols
 from app.locales.ru import MESSAGES
 from app.services.key_service import get_or_update_sub_id
 
@@ -31,8 +31,8 @@ async def handle_cancel_req(query, data, user_id, context):
 
 async def handle_req_service(query, data, user_id, user_name, context):
     protocol = data.split("_")[2]
-    if protocol == "hysteria2":
-        await query.edit_message_text(MESSAGES["hysteria2_not_supported"])
+    if protocol not in get_active_protocols():
+        await query.edit_message_text(MESSAGES[f"{protocol}_not_supported"])
         return
 
     existing_keys = db.get_user_active_keys(user_id, protocol)

@@ -13,6 +13,7 @@
             <div class="card-body">
                 <p class="lead text-center mb-4">Выберите протокол для управления:</p>
                 <div class="row g-4">
+                    {% if "mtproto" in active_protocols %}
                     <div class="col-md-4">
                         <a href="{{ url_for('mtproto_panel') }}" class="text-decoration-none">
                             <div class="card h-100">
@@ -24,6 +25,8 @@
                             </div>
                         </a>
                     </div>
+                    {% endif %}
+                    {% if "xray" in active_protocols %}
                     <div class="col-md-4">
                         <a href="{{ url_for('xray_panel') }}" class="text-decoration-none">
                             <div class="card h-100">
@@ -35,6 +38,8 @@
                             </div>
                         </a>
                     </div>
+                    {% endif %}
+                    {% if "hysteria2" in active_protocols %}
                     <div class="col-md-4">
                         <a href="{{ url_for('hysteria2_panel') }}" class="text-decoration-none">
                             <div class="card h-100">
@@ -46,6 +51,7 @@
                             </div>
                         </a>
                     </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

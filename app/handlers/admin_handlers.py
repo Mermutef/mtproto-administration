@@ -6,7 +6,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
 import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, XRAY_INBOUND_ID
+from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, XRAY_INBOUND_ID, get_active_protocols
 from app.db import get_user_active_keys
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
@@ -21,7 +21,8 @@ async def start_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ У вас нет прав администратора.")
         return
-    await update.message.reply_text(MESSAGES["admin_start"], parse_mode="HTML")
+    protocols_str = ", ".join(p.upper() for p in get_active_protocols())
+    await update.message.reply_text(MESSAGES["admin_start"].format(protocols=protocols_str), parse_mode="HTML")
 
 
 async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -36,11 +37,20 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     arg = context.args[0]
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛡️ MTProto", callback_data=f"add_mtproto_{arg}")],
-        [InlineKeyboardButton("🌐 Xray", callback_data=f"add_xray_{arg}")],
-        [InlineKeyboardButton("⚡ Hysteria2", callback_data=f"add_hysteria2_{arg}")]
-    ])
+    buttons = []
+    active = get_active_protocols()
+    if "mtproto" in active:
+        buttons.append([InlineKeyboardButton("🛡️ MTProto", callback_data=f"add_mtproto_{arg}")])
+    if "xray" in active:
+        buttons.append([InlineKeyboardButton("🌐 Xray", callback_data=f"add_xray_{arg}")])
+    if "hysteria2" in active:
+        buttons.append([InlineKeyboardButton("⚡ Hysteria2", callback_data=f"add_hysteria2_{arg}")])
+
+    if not buttons:
+        await update.message.reply_text(MESSAGES["no_available_protocols"])
+        return
+
+    keyboard = InlineKeyboardMarkup(buttons)
     await update.message.reply_text(
         MESSAGES["adduser_choose_protocol"].format(user=escape_html(arg)),
         reply_markup=keyboard,
@@ -118,7 +128,7 @@ async def process_adduser_direct(update: Update, context: ContextTypes.DEFAULT_T
             success, (email, subscribe_url), error = create_xray_key("web", proxy_username)
             if success:
                 await update.message.reply_text(
-                    f"✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}")
+                    MESSAGES["xray_client_added"].format(email=email, subscribe_url=subscribe_url))
             else:
                 await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
 
@@ -366,7 +376,8 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     filter_protocol = context.args[0].lower() if context.args else "all"
-    if filter_protocol not in ("all", "mtproto", "xray", "hysteria2"):
+    allowed = ["all"] + get_active_protocols()
+    if filter_protocol not in allowed:
         await update.message.reply_text(MESSAGES["invalid_broadcast_filter"])
         return
 
@@ -410,14 +421,10 @@ async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(MESSAGES["resend_keys_usage"])
         return
 
-    filter_protocol = context.args[0].lower()
-    allowed = ("all", "mtproto", "xray", "hysteria2")
+    filter_protocol = context.args[0].lower() if context.args else "all"
+    allowed = ["all"] + get_active_protocols()
     if filter_protocol not in allowed:
-        await update.message.reply_text(MESSAGES["resend_keys_usage"])
-        return
-
-    if filter_protocol == "hysteria2":
-        await update.message.reply_text(MESSAGES["resend_keys_hysteria2_not_supported"])
+        await update.message.reply_text(MESSAGES[f"{filter_protocol}_not_supported"])
         return
 
     if filter_protocol == "all":

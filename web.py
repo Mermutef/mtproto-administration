@@ -11,7 +11,7 @@ from flask import Flask, request, render_template, jsonify
 from werkzeug.exceptions import HTTPException
 from app.config import (
     DOMAIN, PORT, SERVER, ADMIN_PASSWORD, FLASK_PORT, DB_PATH, TOKEN,
-    CONTAINER_NAME, XRAY_INBOUND_ID, XRAY_SUB_URL_BASE
+    CONTAINER_NAME, XRAY_INBOUND_ID, XRAY_SUB_URL_BASE, get_active_protocols
 )
 import app.proxy_manager as proxy_manager
 import app.db as db
@@ -409,6 +409,10 @@ def hysteria2_panel():
         return "", 401, {"WWW-Authenticate": 'Basic realm="Admin"'}
     return render_template("hysteria2.html")
 
+
+@app.context_processor
+def inject_active_protocols():
+    return dict(active_protocols=get_active_protocols())
 
 if __name__ == "__main__":
     print("=" * 50)

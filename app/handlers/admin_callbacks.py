@@ -1,7 +1,7 @@
 import sqlite3
 import app.db as db
 import app.proxy_manager as proxy_manager
-from app.config import DB_PATH
+from app.config import DB_PATH, get_active_protocols
 from app.handlers.admin_handlers import _revoke_key_by_protocol
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
@@ -89,21 +89,17 @@ async def handle_revoke_xray(query, data, context):
 
 
 async def handle_revoke_cancel(query, data, context):
-    await query.edit_message_text("❎ Отзыв отменён.")
+    await query.edit_message_text(MESSAGES["revoke_canceled"])
 
 
 async def handle_add_key(query, data, context):
     parts = data.split('_', 2)
     if len(parts) != 3:
-        await query.edit_message_text("❌ Неверный формат команды.")
+        await query.edit_message_text(MESSAGES["invalid_callback_format"])
         return
     _, protocol, identifier = parts
-    if protocol not in ("mtproto", "xray", "hysteria2"):
-        await query.edit_message_text(MESSAGES["unknown_protocol"])
-        return
-
-    if protocol == "hysteria2":
-        await query.edit_message_text(MESSAGES["hysteria2_not_supported"])
+    if protocol not in get_active_protocols():
+        await query.edit_message_text(MESSAGES[f"{protocol}_not_supported"])
         return
 
     if identifier.startswith('@'):
@@ -168,6 +164,7 @@ async def handle_add_key(query, data, context):
         elif protocol == "xray":
             success, (email, subscribe_url), error = create_xray_key("web", proxy_username)
             if success:
-                await query.edit_message_text(f"✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}")
+                await query.edit_message_text(
+                    MESSAGES["xray_client_added"].format(email=email, subscribe_url=subscribe_url))
             else:
                 await query.edit_message_text(MESSAGES["key_created_error"].format(error=error))

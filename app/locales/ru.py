@@ -8,8 +8,7 @@ MESSAGES = {
         "/status — проверить статус последней заявки\n"
         "/cancel — отменить текущую заявку\n\n"
         "После одобрения администратором ключ придёт в этот чат.\n\n"
-        "<i>Поддерживаемые протоколы: MTProto (прокси Telegram), Xray (VLESS Reality), "
-        "Hysteria2 (скоро будет).</i>"
+        "<i>Поддерживаемые протоколы: {protocols}</i>"
     ),
     "already_has_key": "⚠️ У вас уже есть активный ключ для {protocol}.\nЕсли вы забыли ссылку, обратитесь к администратору.",
     "already_has_keys": "⚠️ У вас уже есть активные ключи для {protocol}:",
@@ -45,11 +44,14 @@ MESSAGES = {
         "/adduser @username или логин — выдать ключ\n"
         "/revoke @username — отозвать ключ\n"
         "/sendto @username — переслать сообщение пользователю\n"
-        "/broadcast [all|mtproto|xray|hysteria2] — рассылка сообщения всем/по протоколам\n"
-        "/resend_keys [all|mtproto|xray|hysteria2] — повторно отправить существующие ключи\n\n"
+        "/broadcast [all|mtproto|xray|hysteria2] — рассылка\n"
+        "/resend_keys [all|mtproto|xray|hysteria2] — повторная рассылка ключей\n\n"
+        "<i>Доступные протоколы: {protocols}</i>"
     ),
     "adduser_usage": "❌ Использование: /adduser @username [mtproto|xray|hysteria2] или /adduser логин",
     "adduser_choose_protocol": "Выберите протокол для выдачи ключа пользователю <code>{user}</code>:",
+    "mtproto_not_supported": "🛡️ MTProto пока не поддерживается.",
+    "xray_not_supported": "🌐 Xray пока не поддерживается.",
     "hysteria2_not_supported": "⚡ Hysteria2 пока не поддерживается.",
     "user_not_found": "❌ Не найден @{username}. Убедитесь, что пользователь начал диалог с ботом.",
     "user_already_has_key": "⚠️ У @{tg_username} уже есть ключ: <code>{username}</code>",
@@ -116,6 +118,10 @@ MESSAGES = {
     "cancel_request_not_found": "❌ Эта заявка уже обработана или не существует.",
     "cancel_request_invalid": "❓ Неверный номер заявки.",
     "unknown_admin_command": "❓ Неизвестная команда. Доступно: /start, /adduser, /users, /revoke",
+    "no_available_protocols": "❌ Нет доступных протоколов.",
+    "invalid_callback_format": "❌ Неверный формат команды.",
+    "revoke_canceled": "❎ Отзыв отменён.",
+    "xray_client_added": "✅ Xray-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}",
 
     # sendto
     "sendto_usage": "ℹ️ Использование: /sendto @username (в ответ на сообщение)",
@@ -137,7 +143,6 @@ MESSAGES = {
     "resend_keys_started": "⏳ Повторная рассылка ключей ({filter_protocol}) начата. Получателей: {total}...",
     "resend_keys_done": "✅ Повторная рассылка завершена.\nУспешно: {success}\nОшибок: {failed}",
     "resend_keys_no_users": "📭 Нет пользователей с активными ключами.",
-    "resend_keys_hysteria2_not_supported": "⚡ Hysteria2 пока не поддерживается.",
 
     # Системные
     "xui_unavailable": "❌ Нет подключения к 3x-ui",

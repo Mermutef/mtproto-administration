@@ -2,13 +2,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
 from app.locales.ru import MESSAGES
-from app.config import ADMIN_GROUP_ID
+from app.config import ADMIN_GROUP_ID, get_active_protocols
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private":
         return
-    await update.message.reply_text(MESSAGES["start"], parse_mode="HTML")
+    protocols_str = ", ".join(p.upper() for p in get_active_protocols())
+    await update.message.reply_text(MESSAGES["start"].format(protocols=protocols_str), parse_mode="HTML")
 
 
 async def request_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -16,11 +17,20 @@ async def request_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(MESSAGES["not_in_private"])
         return
 
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🛡️ MTProto", callback_data="req_service_mtproto")],
-        [InlineKeyboardButton("🌐 Xray", callback_data="req_service_xray")],
-        [InlineKeyboardButton("⚡ Hysteria2", callback_data="req_service_hysteria2")]
-    ])
+    buttons = []
+    active = get_active_protocols()
+    if "mtproto" in active:
+        buttons.append([InlineKeyboardButton("🛡️ MTProto", callback_data="req_service_mtproto")])
+    if "xray" in active:
+        buttons.append([InlineKeyboardButton("🌐 Xray", callback_data="req_service_xray")])
+    if "hysteria2" in active:
+        buttons.append([InlineKeyboardButton("⚡ Hysteria2", callback_data="req_service_hysteria2")])
+
+    if not buttons:
+        await update.message.reply_text(MESSAGES["no_available_protocols"])
+        return
+
+    keyboard = InlineKeyboardMarkup(buttons)
     await update.message.reply_text("Выберите протокол для получения ключа:", reply_markup=keyboard)
 
 

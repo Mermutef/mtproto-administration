@@ -2,6 +2,23 @@ import os
 import ast
 from dotenv import load_dotenv
 
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name, str(default)).strip().lower()
+    return val in ("1", "true", "yes", "y")
+
+
+def get_active_protocols():
+    active = []
+    if MTP_ENABLED:
+        active.append("mtproto")
+    if XRAY_ENABLED:
+        active.append("xray")
+    if HYSTERIA2_ENABLED:
+        active.append("hysteria2")
+    return active
+
+
 load_dotenv()
 
 TOKEN = os.getenv("TOKEN")
@@ -26,3 +43,7 @@ XRAY_SUB_URL_BASE = os.getenv("XRAY_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
+
+MTP_ENABLED = _env_bool("MTP_ENABLED", True)
+XRAY_ENABLED = _env_bool("XRAY_ENABLED", False) and XRAY_INBOUND_ID > 0
+HYSTERIA2_ENABLED = _env_bool("HYSTERIA2_ENABLED", False)
