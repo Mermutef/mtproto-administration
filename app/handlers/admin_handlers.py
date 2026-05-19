@@ -143,13 +143,23 @@ async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ У вас нет прав администратора.")
         return
 
-    keyboard = [
-        [InlineKeyboardButton("🛡️ MTProto", callback_data="users_list_mtproto_0"),
-         InlineKeyboardButton("🌐 Xray", callback_data="users_list_xray_0")],
-        [InlineKeyboardButton("👥 Все", callback_data="users_list_all_0")]
-    ]
+    buttons = []
+    active = get_active_protocols()
+    if "mtproto" in active:
+        buttons.append([InlineKeyboardButton("🛡️ MTProto", callback_data=f"users_list_mtproto_0")])
+    if "xray" in active:
+        buttons.append([InlineKeyboardButton("🌐 Xray", callback_data=f"users_list_xray_0")])
+    if "hysteria2" in active:
+        buttons.append([InlineKeyboardButton("⚡ Hysteria2", callback_data=f"users_list_hysteria2_0")])
+
+    if not buttons:
+        await update.message.reply_text(MESSAGES["no_available_protocols"])
+        return
+
+    buttons.append([InlineKeyboardButton("👥 Все", callback_data="users_list_all_0")])
+    keyboard = InlineKeyboardMarkup(buttons)
     await update.message.reply_text(MESSAGES["users_choose_protocol"],
-                                    reply_markup=InlineKeyboardMarkup(keyboard))
+                                    reply_markup=keyboard)
 
 
 async def users_show_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, protocol: str, page: int):
