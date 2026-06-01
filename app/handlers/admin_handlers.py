@@ -1,38 +1,71 @@
+"""Admin-only Telegram command handlers.
+
+Provides administrative commands for the admin group chat:
+``/start``, ``/adduser``, ``/users``, ``/revoke``, ``/info``,
+``/broadcast``, ``/sendto``, ``/resend_keys``, and helpers for
+cache and pagination.
+"""
+
 import json
+import logging
 import sqlite3
 import asyncio
-import traceback
 from datetime import datetime
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
-import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, XRAY_INBOUND_ID, get_active_protocols, \
+from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, get_active_protocols, \
     USERS_PER_PAGE
 from app.db import get_user_active_keys
 from app.utils import escape_html
 from app.locales.ru import MESSAGES
-from app.services.key_service import create_mtproto_key, create_xray_key
-from app.services.broadcast_service import get_user_ids_by_protocol
-from app.services.key_service import get_or_update_sub_id, get_xui_client
+from app.services.registry import registry
+
+
+def _svc(protocol):
+    """Get a VPN service instance by protocol name.
+
+    Args:
+        protocol: Protocol identifier (e.g. ``'mtproto'``, ``'xray'``).
+
+    Returns:
+        The service instance, or ``None`` if not found.
+    """
+    return registry.get(protocol)
 
 
 async def start_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start in the admin group.
+
+    Displays the admin welcome message with supported protocols.
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
     protocols_str = ", ".join(p.upper() for p in get_active_protocols())
     await update.message.reply_text(MESSAGES["admin_start"].format(protocols=protocols_str), parse_mode="HTML")
 
 
 async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /adduser — start the add-user flow with protocol selection.
+
+    Usage: ``/adduser <username_or_@telegram_username>``
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
     if not context.args:
         await update.message.reply_text(MESSAGES["adduser_usage"])
@@ -42,12 +75,10 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     buttons = []
     active = get_active_protocols()
-    if "mtproto" in active:
-        buttons.append([InlineKeyboardButton("🛡️ MTProto", callback_data=f"add_mtproto_{arg}")])
-    if "xray" in active:
-        buttons.append([InlineKeyboardButton("🌐 Xray", callback_data=f"add_xray_{arg}")])
-    if "hysteria2" in active:
-        buttons.append([InlineKeyboardButton("⚡ Hysteria2", callback_data=f"add_hysteria2_{arg}")])
+    for proto in active:
+        svc = _svc(proto)
+        if svc:
+            buttons.append([InlineKeyboardButton(f"{svc.emoji} {svc.display_name}", callback_data=f"add_{proto}_{arg}")])
 
     if not buttons:
         await update.message.reply_text(MESSAGES["no_available_protocols"])
@@ -61,108 +92,172 @@ async def adduser_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def process_adduser_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, arg: str, protocol: str):
-    if protocol == "hysteria2":
-        await update.message.reply_text(MESSAGES["hysteria2_not_supported"])
-        return
+async def _create_key_for_identifier(
+    send_or_edit,
+    context: ContextTypes.DEFAULT_TYPE,
+    identifier: str,
+    protocol: str,
+    *,
+    is_callback: bool = False,
+):
+    """Create a VPN key for a user, handling both @mention and direct name flows.
 
-    if arg.startswith('@'):
-        username = arg.lstrip('@')
+    This is the single shared entry point used by ``process_adduser_direct``
+    and ``handle_add_key``, eliminating duplicate protocol-specific logic.
+
+    Args:
+        send_or_edit: Either an ``Update`` (for message-based commands) or
+            a callback ``Query`` (for inline button handlers).
+        context: Bot context.
+        identifier: The ``@username`` or literal proxy name.
+        protocol: Protocol name (e.g. ``'mtproto'``, ``'xray'``).
+        is_callback: If ``True``, uses ``edit_message_text``; otherwise
+            ``reply_text``.
+
+    Returns:
+        ``True`` if the key was created and sent successfully.
+    """
+    svc = _svc(protocol)
+    if not svc or not svc.enabled:
+        await _reply(send_or_edit, MESSAGES[f"{protocol}_not_supported"], is_callback=is_callback)
+        return False
+
+    async def _reply_safe(msg, **kwargs):
+        await _reply(send_or_edit, msg, is_callback=is_callback, **kwargs)
+
+    if identifier.startswith('@'):
+        username = identifier.lstrip('@')
         try:
             chat = await context.bot.get_chat(f"@{username}")
             user_id = chat.id
-        except:
-            await update.message.reply_text(MESSAGES["user_not_found"].format(username=username))
-            return
+        except Exception:
+            await _reply_safe(MESSAGES["user_not_found"].format(username=username))
+            return False
 
-        if protocol == "mtproto":
-            existing = db.get_user_by_telegram_id(user_id)
-            if existing:
-                await update.message.reply_text(
-                    MESSAGES["user_already_has_key"].format(tg_username=username, username=escape_html(existing)),
-                    parse_mode="HTML"
-                )
-                return
-            success, (proxy_username, link), error = create_mtproto_key(user_id, username)
-            if success:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=MESSAGES["mtp_key_granted"].format(username=escape_html(proxy_username), link=link),
-                    parse_mode="HTML"
-                )
-                await update.message.reply_text(MESSAGES["mtp_key_created_sent"].format(username=username))
-            else:
-                await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
+        keys = db.get_user_active_keys(user_id, protocol)
+        if keys:
+            await _reply_safe(
+                MESSAGES["user_already_has_key"].format(tg_username=username, username=escape_html(username)),
+                parse_mode="HTML"
+            )
+            return False
 
-        elif protocol == "xray":
-            keys = db.get_user_active_keys(user_id, 'xray')
-            if keys:
-                await update.message.reply_text(MESSAGES["xray_already_has_key"].format(username=username))
-                return
-            success, (email, subscribe_url), error = create_xray_key(user_id, username)
-            if success:
-                await context.bot.send_message(
-                    chat_id=user_id,
-                    text=MESSAGES["xray_key_granted"].format(email=escape_html(email), subscribe_url=subscribe_url),
-                    parse_mode="HTML"
-                )
-                await update.message.reply_text(MESSAGES["xray_key_created_sent"].format(username=username))
-            else:
-                await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
-
+        success, link = svc.create_user(username, telegram_id=str(user_id))
+        if success:
+            await _send_key_to_user(context, int(user_id), protocol, username, link)
+            admin_msg = svc.format_admin_created_message(username)
+            await _reply_safe(admin_msg)
+            return True
+        else:
+            await _reply_safe(MESSAGES["key_created_error"].format(error=link))
+            return False
     else:
-        proxy_username = arg.strip()
+        proxy_username = identifier.strip()
         if not proxy_username:
-            await update.message.reply_text(MESSAGES["empty_username"])
-            return
+            await _reply_safe(MESSAGES["empty_username"])
+            return False
 
-        if protocol == "mtproto":
-            if proxy_username in proxy_manager.load_users():
-                await update.message.reply_text(MESSAGES["mtproto_user_already_exists"].format(username=proxy_username))
-                return
-            success, link = proxy_manager.create_user(proxy_username, telegram_id="web")
-            if success:
-                await update.message.reply_text(
-                    MESSAGES["mtproto_user_created"].format(username=proxy_username, link=link))
-            else:
-                await update.message.reply_text(MESSAGES["key_created_error"].format(error=link))
+        success, link = svc.create_user(proxy_username, telegram_id="web")
+        if success:
+            admin_msg = svc.format_admin_direct_message(proxy_username, link)
+            await _reply_safe(admin_msg)
+            return True
+        else:
+            await _reply_safe(MESSAGES["key_created_error"].format(error=link))
+            return False
 
-        elif protocol == "xray":
-            success, (email, subscribe_url), error = create_xray_key("web", proxy_username)
-            if success:
-                await update.message.reply_text(
-                    MESSAGES["xray_client_added"].format(email=email, subscribe_url=subscribe_url))
-            else:
-                await update.message.reply_text(MESSAGES["key_created_error"].format(error=error))
+
+async def _send_key_to_user(context, chat_id: int, protocol: str, identifier: str, link: str):
+    """Send a newly-created key to a user in private chat.
+
+    Delegates to the service's ``format_user_key_message`` so each
+    protocol produces its own localised message without branching here.
+
+    Args:
+        context: Bot context.
+        chat_id: Target user chat ID.
+        protocol: Protocol name.
+        identifier: The username or email.
+        link: The connection link returned by the service (used directly).
+    """
+    svc = _svc(protocol)
+    if not svc:
+        return
+    # Build minimal key_data embedding the real link so the formatter
+    # can produce the correct message without requiring stored secrets.
+    if protocol == "mtproto":
+        key_data = {"username": identifier, "secret": "", "_link_override": link}
+    elif protocol == "xray":
+        key_data = {"email": identifier, "sub_id": "", "uuid": "", "_link_override": link}
+    else:
+        key_data = {"username": identifier, "_link_override": link}
+    text, parse_mode = svc.format_user_key_message(key_data)
+    if not text:
+        return
+    try:
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+    except Exception as e:
+        logging.error(f"Failed to send key to user {chat_id}: {e}")
+
+
+async def _reply(send_or_edit, text, is_callback=False, **kwargs):
+    """Send or edit a message depending on the source type."""
+    if is_callback:
+        try:
+            await send_or_edit.edit_message_text(text, **kwargs)
+        except Exception:
+            await send_or_edit.message.reply_text(text, **kwargs)
+    else:
+        await send_or_edit.message.reply_text(text, **kwargs)
+
+
+async def process_adduser_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, arg: str, protocol: str):
+    """Create a user directly (without callback) for a given protocol.
+
+    Delegates to :func:`_create_key_for_identifier`.
+    """
+    await _create_key_for_identifier(update, context, arg, protocol, is_callback=False)
 
 
 async def users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /users — show protocol selection for listing users.
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
 
     buttons = []
     active = get_active_protocols()
-    if "mtproto" in active:
-        buttons.append([InlineKeyboardButton("🛡️ MTProto", callback_data=f"users_list_mtproto_0")])
-    if "xray" in active:
-        buttons.append([InlineKeyboardButton("🌐 Xray", callback_data=f"users_list_xray_0")])
-    if "hysteria2" in active:
-        buttons.append([InlineKeyboardButton("⚡ Hysteria2", callback_data=f"users_list_hysteria2_0")])
+    for proto in active:
+        svc = _svc(proto)
+        if svc:
+            buttons.append([InlineKeyboardButton(f"{svc.emoji} {svc.display_name}", callback_data=f"users_list_{proto}_0")])
 
     if not buttons:
         await update.message.reply_text(MESSAGES["no_available_protocols"])
         return
 
-    buttons.append([InlineKeyboardButton("👥 Все", callback_data="users_list_all_0")])
+    buttons.append([InlineKeyboardButton("👥 All", callback_data="users_list_all_0")])
     keyboard = InlineKeyboardMarkup(buttons)
     await update.message.reply_text(MESSAGES["users_choose_protocol"],
                                     reply_markup=keyboard)
 
 
 async def users_show_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, protocol: str, page: int):
+    """Display a paginated list of users with active keys.
+
+    Args:
+        update_or_query: The update or callback query object.
+        context: The bot context.
+        protocol: Protocol filter (or ``'all'``).
+        page: The page number to show (0-indexed).
+    """
     if protocol == "all":
         users = db.get_users_with_active_keys()
     else:
@@ -193,60 +288,19 @@ async def users_show_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, p
     await update_or_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
 
 
-async def user_info_callback(query, context, username):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT telegram_id, created_at FROM users WHERE username = ?", (username,))
-    row = c.fetchone()
-    if not row:
-        await query.edit_message_text(MESSAGES["user_not_found"])
-        conn.close()
-        return
-    telegram_id, created = row
-    created_str = _format_date(created)
-
-    c.execute(
-        "SELECT protocol, key_data, status, created_at FROM keys WHERE user_id = (SELECT id FROM users WHERE username = ?)",
-        (username,))
-    keys = c.fetchall()
-    conn.close()
-
-    msg = MESSAGES["user_info_profile"].format(username=escape_html(username), telegram_id=telegram_id,
-                                               created=created_str)
-    if not keys:
-        msg += "\n" + MESSAGES["user_info_no_keys"]
-    else:
-        for protocol, key_data_str, status, created_key in keys:
-            key_data = json.loads(key_data_str)
-            if protocol == 'mtproto':
-                login = username
-                secret = key_data.get('secret', '')
-                link = proxy_manager.get_proxy_link(secret) if secret else "—"
-            elif protocol == 'xray':
-                login = key_data.get('email', '—')
-                sub_id = key_data.get('sub_id')
-                if not sub_id:
-                    sub_id = get_or_update_sub_id(login)
-                link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else "—"
-            else:
-                login = '—'
-                link = "—"
-            created_key_str = _format_date(created_key)
-            msg += MESSAGES["user_info_key"].format(
-                protocol=protocol.upper(),
-                login=login,
-                status=status,
-                created=created_key_str,
-                link=link
-            )
-    await query.edit_message_text(msg, parse_mode="HTML")
-
-
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /info — show user info by username.
+
+    Usage: ``/info <username>``
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
     if not context.args:
         await update.message.reply_text(MESSAGES["info_usage"])
@@ -255,15 +309,23 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await user_info_direct(update, context, username)
 
 
-async def user_info_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, username: str):
+async def _build_user_info_message(username: str) -> str:
+    """Build a formatted user info message string.
+
+    Args:
+        username: The username to build info for.
+
+    Returns:
+        A formatted HTML message string, or empty string if the user
+        was not found.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT telegram_id, created_at FROM users WHERE username = ?", (username,))
     row = c.fetchone()
     if not row:
-        await update.message.reply_text(MESSAGES["user_not_found"])
         conn.close()
-        return
+        return ""
     telegram_id, created = row
     created_str = _format_date(created)
 
@@ -280,19 +342,9 @@ async def user_info_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     else:
         for protocol, key_data_str, status, created_key in keys:
             key_data = json.loads(key_data_str)
-            if protocol == 'mtproto':
-                login = username
-                secret = key_data.get('secret', '')
-                link = proxy_manager.get_proxy_link(secret) if secret else "—"
-            elif protocol == 'xray':
-                login = key_data.get('email', '—')
-                sub_id = key_data.get('sub_id')
-                if not sub_id:
-                    sub_id = get_or_update_sub_id(login)
-                link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else "—"
-            else:
-                login = '—'
-                link = "—"
+            svc = _svc(protocol)
+            login = svc.get_identifier(key_data) if svc else '—'
+            link = svc.get_link_for_key(key_data) if svc else "—"
             created_key_str = _format_date(created_key)
             msg += MESSAGES["user_info_key"].format(
                 protocol=protocol.upper(),
@@ -301,10 +353,48 @@ async def user_info_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 created=created_key_str,
                 link=link
             )
+    return msg
+
+
+async def user_info_callback(query, context, username):
+    """Display detailed user info (keys, Telegram ID, timestamps).
+
+    Args:
+        query: The callback query.
+        context: The bot context.
+        username: The username to display.
+    """
+    msg = await _build_user_info_message(username)
+    if not msg:
+        await query.edit_message_text(MESSAGES["user_not_found"])
+        return
+    await query.edit_message_text(msg, parse_mode="HTML")
+
+
+async def user_info_direct(update: Update, context: ContextTypes.DEFAULT_TYPE, username: str):
+    """Display detailed user info directly (non-callback path).
+
+    Args:
+        update: The update object.
+        context: The bot context.
+        username: The username to display.
+    """
+    msg = await _build_user_info_message(username)
+    if not msg:
+        await update.message.reply_text(MESSAGES["user_not_found"])
+        return
     await update.message.reply_text(msg, parse_mode="HTML")
 
 
 def _format_date(iso_string):
+    """Format an ISO datetime string to ``DD.MM.YYYY HH:MM``.
+
+    Args:
+        iso_string: An ISO-8601 datetime string.
+
+    Returns:
+        The formatted date string, or the original string on error.
+    """
     if not iso_string:
         return "—"
     try:
@@ -315,10 +405,18 @@ def _format_date(iso_string):
 
 
 async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /revoke — show a keyboard to select which key to revoke.
+
+    Usage: ``/revoke <username_or_telegram_id>``
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
     if not context.args:
         await update.message.reply_text(MESSAGES["revoke_usage"])
@@ -340,7 +438,12 @@ async def revoke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _show_revoke_keyboard(update: Update, username: str):
-    """Показывает клавиатуру с активными ключами пользователя для выборочного отзыва."""
+    """Display a keyboard with active keys for a user to revoke.
+
+    Args:
+        update: The update object.
+        username: The user whose keys to list.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
@@ -358,15 +461,12 @@ async def _show_revoke_keyboard(update: Update, username: str):
 
     keyboard_buttons = []
     for protocol, email, key_data_str in active_keys:
-        if protocol == 'mtproto':
-            label = MESSAGES["revoke_mtproto_btn"].format(username=username)
-            callback_data = f"revoke_mtproto_{username}"
-        elif protocol == 'xray':
-            email_val = email if email else username
-            label = MESSAGES["revoke_xray_btn"].format(email=email_val)
-            callback_data = f"revoke_xray_{email_val}"
-        else:
-            continue  # hysteria2 пока нет
+        svc = _svc(protocol)
+        if not svc:
+            continue
+        identifier = email if email else username
+        label = f"{svc.emoji} {svc.display_name}: {identifier}"
+        callback_data = f"revoke_{protocol}_{identifier}"
         keyboard_buttons.append([InlineKeyboardButton(label, callback_data=callback_data)])
 
     keyboard_buttons.append([InlineKeyboardButton(MESSAGES["revoke_cancel_btn"], callback_data="revoke_cancel")])
@@ -379,59 +479,52 @@ async def _show_revoke_keyboard(update: Update, username: str):
 
 
 async def _revoke_key_by_protocol(username: str, protocol: str, update_or_query, context, email: str = None):
-    if protocol == 'mtproto':
-        if proxy_manager.delete_user(username):
-            await update_or_query.edit_message_text(
-                MESSAGES["revoke_mtproto_success"].format(username=escape_html(username)),
-                parse_mode="HTML"
-            )
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute("SELECT telegram_id FROM users WHERE username = ?", (username,))
-            row = c.fetchone()
-            conn.close()
-            if row and row[0] not in ('unknown', 'web', '—'):
-                try:
-                    await context.bot.send_message(chat_id=int(row[0]), text=MESSAGES["key_revoked_notification"])
-                except:
-                    pass
-        else:
-            await update_or_query.edit_message_text(MESSAGES["revoke_error"])
+    """Revoke a key for a given protocol and notify the user.
 
-    elif protocol == 'xray':
-        xui = get_xui_client()
-        if not xui:
-            await update_or_query.edit_message_text(MESSAGES["xui_unavailable"])
-            return
-        try:
-            email_to_delete = email if email else username
-            xui.remove_client(XRAY_INBOUND_ID, email_to_delete)
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute(
-                "UPDATE keys SET status = 'revoked' WHERE user_id = (SELECT id FROM users WHERE username = ?) AND protocol = 'xray' AND status = 'active'",
-                (username,))
-            conn.commit()
-            conn.close()
-            await update_or_query.edit_message_text(
-                MESSAGES["revoke_xray_success"].format(email=escape_html(email_to_delete)),
-                parse_mode="HTML"
-            )
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute("SELECT telegram_id FROM users WHERE username = ?", (username,))
-            row = c.fetchone()
-            conn.close()
-            if row and row[0] not in ('unknown', 'web', '—'):
-                try:
-                    await context.bot.send_message(chat_id=int(row[0]), text=MESSAGES["key_revoked_notification"])
-                except:
-                    pass
-        except Exception as e:
-            await update_or_query.edit_message_text(MESSAGES["revoke_error"] + f": {e}")
+    Uses the service registry to obtain the protocol-specific
+    implementation, eliminating per-protocol branching.
+
+    Args:
+        username: The canonical username.
+        protocol: The protocol identifier (e.g. ``'mtproto'``, ``'xray'``).
+        update_or_query: Update or callback query for editing the message.
+        context: Bot context.
+        email: Protocol-specific identifier override (e.g. Xray email).
+    """
+    svc = _svc(protocol)
+    if not svc:
+        await update_or_query.edit_message_text(MESSAGES["revoke_error"])
+        return
+
+    identifier = email if email else username
+    if svc.delete_user(identifier):
+        if protocol == "mtproto":
+            success_text = MESSAGES["revoke_mtproto_success"].format(username=escape_html(identifier))
+        elif protocol == "xray":
+            success_text = MESSAGES["revoke_xray_success"].format(email=escape_html(identifier))
+        else:
+            success_text = MESSAGES["revoke_success"].format(identifier=escape_html(identifier))
+        await update_or_query.edit_message_text(
+            success_text,
+            parse_mode="HTML"
+        )
+        tid = svc.get_telegram_id(username)
+        if tid and tid not in ('unknown', 'web', '—'):
+            try:
+                await context.bot.send_message(chat_id=int(tid), text=MESSAGES["key_revoked_notification"])
+            except:
+                pass
+    else:
+        await update_or_query.edit_message_text(MESSAGES["revoke_error"])
 
 
 async def cache_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cache a media group message for later batch forwarding.
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     msg = update.effective_message
     if msg and msg.media_group_id and msg.date:
         db.cache_message(
@@ -444,6 +537,17 @@ async def cache_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def _copy_to_user(chat_id: int, source_chat_id: int,
                         reply_message, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Copy a message (or album) from the admin group to a user.
+
+    Args:
+        chat_id: Target user chat ID.
+        source_chat_id: Source chat (admin group) ID.
+        reply_message: The message to copy.
+        context: Bot context.
+
+    Returns:
+        True if the copy succeeded, False otherwise.
+    """
     try:
         if reply_message.media_group_id:
             album_ids = db.get_media_group_message_ids(source_chat_id, reply_message.media_group_id)
@@ -469,15 +573,22 @@ async def _copy_to_user(chat_id: int, source_chat_id: int,
             )
             return True
     except Exception as e:
-        traceback.print_exc()
         return False
 
 
 async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /sendto — forward a message to a specific user.
+
+    Usage: ``/sendto <username>`` (reply to the message to forward)
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
 
     if not context.args:
@@ -515,10 +626,18 @@ async def sendto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /broadcast — forward a message to all users.
+
+    Usage: ``/broadcast [protocol]`` (reply to the message to forward)
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
     if not update.message.reply_to_message:
         await update.message.reply_text(MESSAGES["broadcast_usage"])
@@ -533,6 +652,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if filter_protocol == "all":
         unique_ids = db.get_unique_telegram_ids()
     else:
+        from app.services.broadcast_service import get_user_ids_by_protocol
         unique_ids = get_user_ids_by_protocol(filter_protocol)
 
     if not unique_ids:
@@ -560,10 +680,18 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /resend_keys — resend VPN keys to users.
+
+    Usage: ``/resend_keys [protocol]``
+
+    Args:
+        update: The update object.
+        context: The bot context.
+    """
     if update.effective_chat.id != ADMIN_GROUP_ID:
         return
     if ADMIN_IDS and update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ У вас нет прав администратора.")
+        await update.message.reply_text(MESSAGES["no_permission"])
         return
 
     if not context.args:
@@ -576,6 +704,7 @@ async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(MESSAGES[f"{filter_protocol}_not_supported"])
         return
 
+    from app.services.broadcast_service import get_user_ids_by_protocol
     if filter_protocol == "all":
         user_ids = get_user_ids_by_protocol(None)
     else:
@@ -611,7 +740,7 @@ async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                         failed += 1
         except Exception as e:
             failed += 1
-            print(f"Ошибка при отправке ключа пользователю {uid}: {e}")
+            logging.error(f"Error sending key to user {uid}: {e}")
         await asyncio.sleep(0.15)
 
     await status_msg.edit_text(
@@ -620,38 +749,29 @@ async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def send_existing_key(chat_id: int, protocol: str, key_data: dict, context) -> bool:
+    """Send an existing VPN key to a user by protocol.
+
+    Uses the service's ``format_user_key_message`` to build the
+    protocol-specific message text, eliminating per-protocol branching.
+
+    Args:
+        chat_id: The target chat ID.
+        protocol: The protocol name (e.g. ``'mtproto'``, ``'xray'``).
+        key_data: The key data dict from the database.
+        context: Bot context.
+
+    Returns:
+        True if the message was sent successfully, False otherwise.
+    """
     try:
-        if protocol == "mtproto":
-            secret = key_data.get("secret")
-            if not secret:
-                return False
-            conn = sqlite3.connect(DB_PATH)
-            c = conn.cursor()
-            c.execute(
-                "SELECT username FROM users WHERE id = (SELECT user_id FROM keys WHERE protocol='mtproto' AND json_extract(key_data, '$.secret') = ?)",
-                (secret,))
-            row = c.fetchone()
-            conn.close()
-            if not row:
-                return False
-            username = row[0]
-            link = proxy_manager.get_proxy_link(secret)
-            text = MESSAGES["mtp_key_granted"].format(username=escape_html(username), link=link)
-            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
-            return True
-        elif protocol == "xray":
-            email = key_data.get("email")
-            if not email:
-                return False
-            sub_id = key_data.get("sub_id")
-            if not sub_id:
-                sub_id = get_or_update_sub_id(email)
-            subscribe_url = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
-            text = MESSAGES["xray_key_granted"].format(email=escape_html(email), subscribe_url=subscribe_url)
-            await context.bot.send_message(chat_id=chat_id, text=text, parse_mode="HTML")
-            return True
-        else:
+        svc = _svc(protocol)
+        if not svc:
             return False
+        text, parse_mode = svc.format_user_key_message(key_data)
+        if not text:
+            return False
+        await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+        return True
     except Exception as e:
-        print(f"Ошибка отправки ключа {protocol} пользователю {chat_id}: {e}")
+        logging.error(f"Error sending {protocol} key to {chat_id}: {e}")
         return False

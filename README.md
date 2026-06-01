@@ -1,283 +1,165 @@
-# MTProto Proxy Administration Suite
+# OurAdmin
 
-Комплексный инструмент для управления MTProto прокси (на
-базе [alexbers/mtprotoproxy](https://github.com/alexbers/mtprotoproxy)) с двумя интерфейсами:
+[🇷🇺 RU](README-ru.md)
 
-- **Telegram бот** – приём заявок от пользователей, выдача/отзыв ключей, администрирование через команды.
-- **Веб-админка** (Flask) – просмотр, добавление и удаление пользователей через браузер с HTTP Basic авторизацией.
+A modular VPN administration system with a **Telegram bot** for user-facing interactions and a **Flask web panel** for admin management. Supports multiple VPN protocols through a pluggable service architecture.
 
-Все данные синхронизированы: пользователи, добавленные через бота, видны в веб-админке и наоборот. Прокси использует
-Fake TLS.
+## Features
 
----
+- **Multi-protocol support**: MTProto Proxy (Telegram), Xray (VLESS Reality) via 3x-ui, Hysteria2 (placeholder)
+- **Telegram bot**: Users request keys, admins approve/revoke via inline buttons
+- **Web admin panel**: Full CRUD management with Bootstrap Table UI
+- **Modular architecture**: Easy to add new VPN protocols via ``BaseVpnService``
+- **Broadcast system**: Send messages to users by protocol filter
+- **Key redistribution**: Resend lost keys to users
+- **Documentation**: Auto-generated API docs at [docs/](docs/index.html)
+
+## Project Structure
 
 ```
-## 📦 Состав проекта
-/root/mtproto_bot/
-├── .env                     # переменные окружения
-├── requirements.txt         # зависимости Python
-├── main.py                  # точка входа Telegram бота
-├── web_admin.py             # точка входа веб-админки Flask
-├── install_services.sh      # установка systemd сервисов
-├── uninstall_services.sh    # удаление systemd сервисов
-├── README.md                # этот файл
-├── app/                     # основной пакет приложения
+OurAdmin/
+├── bot.py                      # Telegram bot entry point
+├── web.py                      # Flask web server entry point
+├── app/
 │   ├── __init__.py
-│   ├── config.py            # загрузка переменных окружения
-│   ├── db.py                # работа с SQLite (пользователи, заявки)
-│   ├── proxy_manager.py     # управление конфигом прокси (config.py) и синхронизация
-│   ├── utils.py             # вспомогательные функции (экранирование HTML)
-│   ├── handlers/            # обработчики команд Telegram бота
+│   ├── config.py               # Environment-based configuration
+│   ├── db.py                   # SQLite database layer
+│   ├── utils.py                # HTML escaping helper
+│   ├── x_ui_manager.py         # 3x-ui panel API client + get_xui_client()
+│   ├── locales/
+│   │   └── ru.py               # Russian message strings
+│   ├── handlers/               # Telegram bot command/callback handlers
 │   │   ├── __init__.py
-│   │   ├── user_handlers.py    # команды пользователей
-│   │   ├── admin_handlers.py   # административные команды
-│   │   └── callback_handlers.py # обработка inline-кнопок
-│   ├── templates/           # HTML-шаблоны веб-админки (Jinja2)
-│   │   ├── admin.html
-│   │   └── edit_user.html
-│   └── locales/             # локализация сообщений бота
-│       └── ru.py            # русские тексты
+│   │   ├── user_handlers.py
+│   │   ├── admin_handlers.py
+│   │   ├── callback_handlers.py
+│   │   ├── admin_callbacks.py
+│   │   └── private_callbacks.py
+│   ├── services/               # Pluggable VPN protocol services
+│   │   ├── base.py             # Abstract base class (BaseVpnService)
+│   │   ├── registry.py         # Central service registry
+│   │   ├── broadcast_service.py# Broadcast helpers
+│   │   ├── mtproto/
+│   │   │   ├── __init__.py     # MtprotoService implementation
+│   │   │   └── config_manager.py # MTProto proxy config management
+│   │   ├── xray/
+│   │   │   └── __init__.py     # XrayService (3x-ui API)
+│   │   └── hysteria2/
+│   │       └── __init__.py     # Hysteria2Service (placeholder)
+│   ├── web/                    # Flask Blueprints for each protocol
+│   │   ├── __init__.py         # Blueprint factory & registration
+│   │   ├── mtproto.py
+│   │   ├── xray.py
+│   │   └── hysteria2.py
+│   ├── static/                 # Frontend assets (CSS, JS, fonts)
+│   └── templates/              # Jinja2 HTML templates
+├── docs/                       # Auto-generated API documentation
+└── .env.example                # Environment variable template
 ```
 
----
+## Quick Start
 
-## ⚙️ Требования
+### Prerequisites
 
-- **Python 3.13+**
-- **Docker** (для запуска прокси `alexbers/mtprotoproxy`)
-- **Git** (для клонирования репозитория прокси)
+- Python 3.10+
+- Docker (for MTProto proxy)
+- 3x-ui panel (for Xray, optional)
+- Telegram bot token from [@BotFather](https://t.me/botfather)
 
----
-
-## 🚀 Быстрая установка
-
-### 1. Установите и запустите MTProto прокси
+### Installation
 
 ```bash
-git clone -b stable https://github.com/alexbers/mtprotoproxy.git /root/mtprotoproxy
-cd /root/mtprotoproxy
-# Отредактируйте config.py (укажите PORT, USERS, MODES, TLS_DOMAIN)
-nano config.py
-docker run -d --name mtprotoproxy --restart unless-stopped -p PORT:PORT -v $(pwd)/config.py:/app/config.py:ro alexbers/mtprotoproxy:latest
-```
+# Clone the repository
+git clone <repo-url>
+cd OurAdmin
 
-> **Примечание**: Прокси можно запустить и без Docker, но с Docker проще.
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate
 
-### 2. Клонируйте данный репозиторий
-
-```bash
-git clone https://github.com/Mermutef/mtproto-administration.git /root/mtproto_bot
-cd /root/mtproto_bot
-```
-
-### 3. Настройте окружение
-
-Скопируйте пример конфигурации и отредактируйте:
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Обязательные параметры:
-
-| Переменная       | Описание                                                              |
-|------------------|-----------------------------------------------------------------------|
-| `TOKEN`          | Токен Telegram бота (получить у @BotFather)                           |
-| `ADMIN_GROUP_ID` | ID группы администраторов (с минусом, например `-1001234567890`)      |
-| `ADMIN_IDS`      | Список ID администраторов в группе, например `[123456789, 987654321]` |
-| `CONFIG_PATH`    | Путь к `config.py` прокси (обычно `/root/mtprotoproxy/config.py`)     |
-| `CONTAINER_NAME` | Имя Docker контейнера с прокси (по умолчанию `mtproto-proxy`)         |
-| `DOMAIN`         | Домен для Fake TLS (оставьте `google.com` или укажите свой)           |
-| `PORT`           | Порт прокси (должен совпадать с `PORT` в `config.py` прокси)          |
-| `SERVER_IP`      | Внешний IP вашего сервера                                             |
-| `DB_PATH`        | Путь к SQLite базе данных (по умолчанию `/root/mtproto_bot.db`)       |
-| `ADMIN_PASSWORD` | Пароль для входа в веб-админку (HTTP Basic Auth)                      |
-| `FLASK_PORT`     | Порт, на котором будет работать веб-админка (например `5000`)         |
-
-### 4. Установите Python зависимости
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+nano .env  # edit your settings
 ```
 
-### 5. Инициализируйте базу данных
+### Running
 
-База создастся автоматически при первом запуске бота.
+**Flask web panel** (port configured via `FLASK_PORT`):
+```bash
+python web.py
+```
 
-### 6. Запустите бота и веб-админку (вручную)
+**Telegram bot**:
+```bash
+python bot.py
+```
+
+## Configuration
+
+All configuration is done via environment variables (see `.env.example`):
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `TOKEN` | Telegram bot token | — |
+| `ADMIN_GROUP_ID` | Telegram group ID for admin chat | — |
+| `ADMIN_IDS` | List of allowed admin user IDs (JSON) | `[]` |
+| `CONFIG_PATH` | MTProto proxy config file path | `mtprotoproxy/config.py` |
+| `CONTAINER_NAME` | MTProto Docker container name | `mtproto-proxy` |
+| `DOMAIN` | Domain for proxy links | `ya.ru` |
+| `PORT` | External proxy port | `443` |
+| `DOCKER_PORT` | Internal Docker port | `4443` |
+| `SERVER` | Server IP/hostname for proxy links | — |
+| `DB_PATH` | SQLite database path | `mtproto_bot.db` |
+| `ADMIN_PASSWORD` | Web panel Basic Auth password | `admin` |
+| `FLASK_PORT` | Flask server port | `5000` |
+| `MTP_ENABLED` | Enable MTProto proxy | `True` |
+| `XRAY_ENABLED` | Enable Xray via 3x-ui | `False` |
+| `HYSTERIA2_ENABLED` | Enable Hysteria2 | `False` |
+| `XUI_BASE_URL` | 3x-ui panel base URL | `https://mysite.ru` |
+| `XUI_USERNAME` | 3x-ui admin username | `admin` |
+| `XUI_PASSWORD` | 3x-ui admin password | — |
+| `XRAY_INBOUND_ID` | 3x-ui inbound ID | `1` |
+
+## Adding a New VPN Protocol
+
+1. Create a package `app/services/newproto/__init__.py` with a class inheriting from [`BaseVpnService`](app/services/base.py)
+2. Implement the required methods: `create_user`, `delete_user`, `get_users`
+3. Optionally create `app/web/newproto.py` with a Flask Blueprint
+4. Register the singleton in [`registry.py`](app/services/registry.py)
+5. Add localised messages in [`app/locales/ru.py`](app/locales/ru.py)
+6. The service automatically appears in the bot and web panel when enabled
+
+## Architecture
+
+### Service Pattern
+
+All VPN protocol implementations follow the same interface defined in [`BaseVpnService`](app/services/base.py):
+
+```
+BaseVpnService (ABC)
+├── MtprotoService (app/services/mtproto/)
+├── XrayService (app/services/xray/)
+└── Hysteria2Service (app/services/hysteria2/)
+```
+
+Services are registered in [`ServiceRegistry`](app/services/registry.py) and accessed from both bot handlers and web endpoints through `registry.get(protocol)`.
+
+### Web Blueprint Registration
+
+Each enabled service gets a Flask Blueprint registered automatically. If a dedicated module `app/web/{protocol}.py` exists with a `bp` variable, it is used; otherwise, a generic CRUD Blueprint is generated.
+
+## Documentation
+
+Auto-generated API documentation is available in the [docs/](docs/index.html) directory. To regenerate:
 
 ```bash
-python3 main.py          # Telegram бот
-python3 web_admin.py     # Flask веб-админка
+pip install pdoc
+pdoc --output-dir docs --docformat google app
 ```
 
----
-
-## 🔧 Установка systemd сервисов (автозапуск)
-
-Скрипт `install_services.sh` позволяет установить бота и/или веб-админку как systemd сервисы.
-
-```bash
-chmod +x install_services.sh
-```
-
-**Примеры:**
-
-```bash
-# Установить только бота
-./install_services.sh --bot
-
-# Установить только веб-админку
-./install_services.sh --web
-
-# Установить оба сервиса
-./install_services.sh --all
-```
-
-После установки сервисы будут автоматически запускаться при загрузке сервера и перезапускаться при падении.
-
-**Управление сервисами:**
-
-```bash
-systemctl start|stop|restart mtproto-bot
-systemctl start|stop|restart mtproto-webadmin
-
-# Просмотр логов
-journalctl -u mtproto-bot -f
-journalctl -u mtproto-webadmin -f
-```
-
-Удаление сервисов:
-
-```bash
-chmod +x uninstall_services.sh
-./uninstall_services.sh --bot   # или --web, --all
-```
-
----
-
-## 🤖 Использование Telegram бота
-
-### Пользовательские команды (личные сообщения)
-
-- `/start` – приветствие и список команд
-- `/request` – подать заявку на получение ключа
-- `/status` – проверить статус последней заявки
-- `/cancel` – отменить текущую заявку
-
-### Административные команды (только в группе, указанной в `ADMIN_GROUP_ID`)
-
-- `/start` – панель администратора
-- `/adduser @username` – выдать ключ пользователю (бот отправит ссылку в ЛС)
-- `/users` – список всех пользователей с инструкцией по отзыву
-- `/revoke @username` – отозвать ключ пользователя
-
-### Процесс выдачи ключа через заявку
-
-1. Пользователь пишет боту `/request`.
-2. В админской группе появляется кнопка «Одобрить» / «Отклонить».
-3. Администратор нажимает «Одобрить» – пользователь получает ссылку в ЛС.
-
----
-
-## 🌐 Веб-админка
-
-Доступна по адресу: `http://<IP_сервера>:<FLASK_PORT>`
-
-- **Логин:** admin
-- **Пароль:** указан в `.env` (`ADMIN_PASSWORD`)
-
-**Возможности:**
-
-- Просмотр списка пользователей (логин, секрет, Telegram ID, ссылка)
-- Добавление нового пользователя (логин задаётся вручную)
-- Удаление пользователя
-- Переименование пользователя
-- Перезапуск контейнера прокси
-- Перезагрузка сервера
-- Отправка массовой рассылки всем пользователям
-- Отправка личного сообщения конкретному пользователю
-
-Все изменения немедленно применяются к прокси (отправляется сигнал `SIGUSR2` контейнеру).
-
----
-
-## 🗄️ Структура базы данных (SQLite)
-
-Файл `mtproto_bot.db` создаётся автоматически.
-
-**Таблица `users`**
-
-- `username` – логин пользователя в прокси (уникальный)
-- `telegram_id` – ID Telegram (или `unknown` / `web` для добавленных вручную)
-- `created_at` – дата создания
-
-**Таблица `requests`**
-
-- `request_id` – автоинкремент
-- `user_id` – Telegram ID заявителя
-- `user_name` – имя пользователя
-- `status` – `pending` / `approved` / `rejected` / `revoked`
-- `created_at` – дата заявки
-
----
-
-## 🔄 Синхронизация с прокси
-
-- При запуске бота и веб-админки вызывается `proxy_manager.sync_all_users()` – все пользователи из `config.py` прокси
-  добавляются в БД (если их там нет).
-- Любое добавление/удаление пользователя через бота или админку сразу изменяет `config.py` и отправляет сигнал `SIGUSR2`
-  контейнеру (или перезапускает его).
-- Прокси поддерживает горячую перезагрузку конфигурации без разрыва существующих соединений.
-
----
-
-## 🧪 Проверка работоспособности
-
-1. Убедитесь, что прокси запущен и слушает порт:
-   ```bash
-   docker ps | grep mtproto-proxy
-   ss -tlnp | grep PORT
-   ```
-2. Отправьте боту команду `/start` – он должен ответить.
-3. Попросите друга подать заявку `/request` и одобрите её.
-4. Зайдите в веб-админку, проверьте список пользователей.
-
----
-
-## 📝 Примечания
-
-- **Безопасность:** веб-админка использует HTTP Basic Auth – рекомендуется использовать HTTPS (например, через nginx с
-  Let's Encrypt).
-- **Прокси:** Убедитесь, что в `config.py` прокси установлен режим `"tls": True` и `"classic": False`,
-  `"secure": False`.
-- **Порт:** Если меняете порт прокси, не забудьте обновить `PORT` в `.env` и в `config.py` прокси.
-- **Docker:** Бот не требует Docker, но прокси запущен в контейнере – бот отправляет сигналы через
-  `docker kill -s USR2`.
-
----
-
-## 🛠️ Устранение неполадок
-
-| Проблема                           | Решение                                                                          |
-|------------------------------------|----------------------------------------------------------------------------------|
-| Бот не отвечает                    | Проверьте токен в `.env`, запустите `python3 main.py` вручную, смотрите ошибки   |
-| Веб-админка не открывается         | Убедитесь, что `FLASK_PORT` свободен, проверьте файрвол (`ufw allow FLASK_PORT`) |
-| Пользователь не получает ссылку    | Проверьте `SERVER_IP` и `PORT` в `.env`, а также что контейнер прокси запущен    |
-| `invalid_dc_id` в логах прокси     | Добавьте `AD_TAG` в `config.py` прокси (получите у @MTProxybot)                  |
-| Ошибка при добавлении пользователя | Проверьте права на запись `config.py` прокси и на БД                             |
-
----
-
-## 📄 Лицензия
+## License
 
 MIT
-
----
-
-## 🙏 Благодарности
-
-- [alexbers/mtprotoproxy](https://github.com/alexbers/mtprotoproxy) – быстрый и гибкий MTProto прокси
-- [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot) – библиотека для ботов
-- [Flask](https://flask.palletsprojects.com/) – микрофреймворк для веб-админки

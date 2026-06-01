@@ -1,7 +1,24 @@
+"""Broadcast (mass-messaging) service.
+
+Provides utility functions to query user IDs for broadcast
+and key-resend operations, optionally filtered by protocol.
+"""
+
 import sqlite3
 from app.config import DB_PATH
 
+
 def get_user_ids_by_protocol(protocol=None):
+    """Get distinct Telegram user IDs that have active keys.
+
+    Args:
+        protocol: Optional protocol name to filter by (e.g. ``'mtproto'``,
+            ``'xray'``). If None or omitted, returns all users with
+            any active key.
+
+    Returns:
+        A list of Telegram ID strings.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     if protocol:

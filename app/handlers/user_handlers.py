@@ -1,12 +1,19 @@
+"""User-facing Telegram command handlers.
+
+Provides commands available to regular users in private chat:
+``/start``, ``/request``, ``/status``, ``/cancel``, ``/mykeys``.
+"""
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
-from app import proxy_manager
 from app.locales.ru import MESSAGES
-from app.config import ADMIN_GROUP_ID, get_active_protocols, XRAY_SUB_URL_BASE
+from app.config import ADMIN_GROUP_ID, get_active_protocols
+from app.services.registry import registry
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /start — show welcome message with supported protocols."""
     if update.effective_chat.type != "private":
         return
     protocols_str = ", ".join(p.upper() for p in get_active_protocols())
@@ -14,28 +21,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def request_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /request — show protocol selection buttons."""
     if update.effective_chat.type != "private":
         await update.message.reply_text(MESSAGES["not_in_private"])
         return
 
     buttons = []
     active = get_active_protocols()
-    if "mtproto" in active:
-        buttons.append([InlineKeyboardButton("🛡️ MTProto", callback_data="req_service_mtproto")])
-    if "xray" in active:
-        buttons.append([InlineKeyboardButton("🌐 Xray", callback_data="req_service_xray")])
-    if "hysteria2" in active:
-        buttons.append([InlineKeyboardButton("⚡ Hysteria2", callback_data="req_service_hysteria2")])
+    for proto in active:
+        svc = registry.get(proto)
+        if svc:
+            buttons.append([InlineKeyboardButton(f"{svc.emoji} {svc.display_name}", callback_data=f"req_service_{proto}")])
 
     if not buttons:
         await update.message.reply_text(MESSAGES["no_available_protocols"])
         return
 
     keyboard = InlineKeyboardMarkup(buttons)
-    await update.message.reply_text("Выберите протокол для получения ключа:", reply_markup=keyboard)
+    await update.message.reply_text(MESSAGES["choose_protocol"], reply_markup=keyboard)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /status — show the latest access request status."""
     if update.effective_chat.type != "private":
         return
     user_id = update.effective_user.id
@@ -59,7 +66,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Показывает список активных заявок с кнопками для отмены."""
+    """Handle /cancel — cancel one or more pending access requests."""
     if update.effective_chat.type != "private":
         return
     user_id = update.effective_user.id
@@ -72,9 +79,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(pending) == 1:
         req_id, created, protocol = pending[0]
         db.update_request_status(req_id, "rejected")
-        await update.message.reply_text(
-            MESSAGES["request_cancelled"].format(req_id=req_id)
-        )
+        await update.message.reply_text(MESSAGES["request_cancelled"].format(req_id=req_id))
         await context.bot.send_message(
             chat_id=ADMIN_GROUP_ID,
             text=MESSAGES["user_cancelled_request"].format(user_id=user_id, req_id=req_id)
@@ -94,6 +99,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def mykeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /mykeys — display all active keys for the user."""
     if update.effective_chat.type != "private":
         await update.message.reply_text(MESSAGES["not_in_private"])
         return
@@ -101,18 +107,14 @@ async def mykeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = MESSAGES["my_keys_header"]
     found = False
     for proto in get_active_protocols():
+        svc = registry.get(proto)
+        if not svc:
+            continue
         keys = db.get_user_active_keys(user_id, proto)
         for key in keys:
             found = True
-            if proto == 'mtproto':
-                login = key.get('username', '—')
-                link = proxy_manager.get_proxy_link(key['secret'])
-            elif proto == 'xray':
-                login = key.get('email', '—')
-                sub_id = key.get('sub_id', '')
-                link = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
-            else:
-                continue
+            login = svc.get_identifier(key)
+            link = svc.get_link_for_key(key)
             msg += MESSAGES["my_keys_key"].format(protocol=proto.upper(), login=login, link=link)
     if not found:
         msg = MESSAGES["my_keys_no_keys"]

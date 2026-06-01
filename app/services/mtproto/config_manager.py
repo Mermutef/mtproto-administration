@@ -1,14 +1,18 @@
+"""Low-level MTProto proxy configuration file manager.
+
+Handles reading and writing the MTProto proxy's Python configuration
+file (``config.py``), managing the user dictionary inside it, and
+signalling the Docker container to reload.
+"""
+
 import os
-import secrets
-import sqlite3
-import subprocess
 import re
+import ast
+import json
+import subprocess
+import sqlite3
 from datetime import datetime
-
-from flask import json
-
 from app.config import CONFIG_PATH, DOMAIN, PORT, SERVER, CONTAINER_NAME, DB_PATH, DOCKER_PORT
-import app.db as db
 
 TEMPLATE_HEAD = '''# MTProto Proxy configuration
 PORT = {port}
@@ -18,11 +22,15 @@ MODES = {{
     "tls": True
 }}
 TLS_DOMAIN = "{tls_domain}"
-# AD_TAG = "your_tag_from_bot"
 '''
 
 
 def _read_config():
+    """Read the USERS dictionary from the proxy config file.
+
+    Returns:
+        A dict mapping username -> secret, or empty dict on error.
+    """
     if not os.path.exists(CONFIG_PATH):
         return {}
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -31,13 +39,18 @@ def _read_config():
     if not match:
         return {}
     try:
-        users_dict = eval(match.group(1))
+        users_dict = ast.literal_eval(match.group(1))
         return users_dict if isinstance(users_dict, dict) else {}
     except:
         return {}
 
 
 def _write_config(users_dict):
+    """Write the USERS dictionary back to the proxy config file.
+
+    Args:
+        users_dict: Mapping of username -> secret.
+    """
     port = DOCKER_PORT
     tls_domain = DOMAIN
     header = TEMPLATE_HEAD.format(port=port, tls_domain=tls_domain)
@@ -51,10 +64,20 @@ def _write_config(users_dict):
 
 
 def load_users():
+    """Load all MTProto proxy users.
+
+    Returns:
+        A dict of username -> secret.
+    """
     return _read_config()
 
 
 def save_users(users_dict):
+    """Persist the user dict and reload the proxy container.
+
+    Args:
+        users_dict: Mapping of username -> secret.
+    """
     _write_config(users_dict)
     try:
         subprocess.run(["docker", "exec", CONTAINER_NAME, "kill", "-USR2", "1"], check=True)
@@ -63,6 +86,15 @@ def save_users(users_dict):
 
 
 def add_user(username, secret):
+    """Add a user to the MTProto proxy.
+
+    Args:
+        username: Login name.
+        secret: Proxy secret hex string.
+
+    Returns:
+        True if added, False if the username already exists.
+    """
     users = load_users()
     if username in users:
         return False
@@ -72,6 +104,14 @@ def add_user(username, secret):
 
 
 def remove_user(username):
+    """Remove a user from the MTProto proxy.
+
+    Args:
+        username: The user to remove.
+
+    Returns:
+        True if removed, False if not found.
+    """
     users = load_users()
     if username not in users:
         return False
@@ -80,73 +120,16 @@ def remove_user(username):
     return True
 
 
-def generate_unique_username(base: str) -> str:
-    """Генерирует уникальное имя пользователя на основе base."""
-    users = load_users()
-    # Очищаем base от недопустимых символов
-    base = re.sub(r'[^a-zA-Z0-9_]', '_', base)
-    if not base:
-        base = "user"
-    if base not in users:
-        return base
-    i = 1
-    while True:
-        candidate = f"{base}_{i}"
-        if candidate not in users:
-            return candidate
-        i += 1
-
-
-def get_proxy_link(secret):
-    domain_hex = DOMAIN.encode().hex()
-    full_secret = f"ee{secret}{domain_hex}"
-    return f"tg://proxy?server={SERVER}&port={PORT}&secret={full_secret}"
-
-
-def create_user(username: str, telegram_id="unknown"):
-    """
-    Создаёт пользователя MTProto.
-    Если username уже существует, возвращает ошибку.
-    """
-    if username in load_users():
-        return False, "User already exists"
-    secret = secrets.token_hex(16)
-    if add_user(username, secret):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO users (username, telegram_id, created_at) VALUES (?, ?, ?)",
-                  (username, str(telegram_id), datetime.now().isoformat()))
-        c.execute("SELECT id FROM users WHERE username = ?", (username,))
-        user_id = c.fetchone()[0]
-        key_data = json.dumps({"secret": secret})
-        c.execute("INSERT INTO keys (user_id, protocol, key_data, created_at) VALUES (?, 'mtproto', ?, ?)",
-                  (user_id, key_data, datetime.now().isoformat()))
-        conn.commit()
-        conn.close()
-        link = get_proxy_link(secret)
-        return True, link
-    return False, "Failed to add user to proxy config"
-
-
-def delete_user(username):
-    if remove_user(username):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT id, telegram_id FROM users WHERE username = ?", (username,))
-        row = c.fetchone()
-        if row:
-            user_id, telegram_id = row
-            if telegram_id not in ('unknown', 'web', '—'):
-                db.revoke_user_requests(telegram_id)
-            c.execute("DELETE FROM keys WHERE user_id = ?", (user_id,))
-            c.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        conn.commit()
-        conn.close()
-        return True
-    return False
-
-
 def rename_user(old_name, new_name):
+    """Rename a user in both proxy config and the local database.
+
+    Args:
+        old_name: Current username.
+        new_name: New username.
+
+    Returns:
+        True on success, False if old_name is missing or new_name taken.
+    """
     users = load_users()
     if old_name not in users:
         return False
@@ -162,7 +145,49 @@ def rename_user(old_name, new_name):
     return True
 
 
+def generate_unique_username(base: str) -> str:
+    """Generate a unique username that doesn't exist in the config.
+
+    Args:
+        base: Preferred base name.
+
+    Returns:
+        A unique username string.
+    """
+    users = load_users()
+    base = re.sub(r'[^a-zA-Z0-9_]', '_', base)
+    if not base:
+        base = "user"
+    if base not in users:
+        return base
+    i = 1
+    while True:
+        candidate = f"{base}_{i}"
+        if candidate not in users:
+            return candidate
+        i += 1
+
+
+def get_proxy_link(secret):
+    """Build a Telegram proxy link from a secret.
+
+    Args:
+        secret: The proxy secret hex string.
+
+    Returns:
+        A ``tg://proxy`` URL.
+    """
+    domain_hex = DOMAIN.encode().hex()
+    full_secret = f"ee{secret}{domain_hex}"
+    return f"tg://proxy?server={SERVER}&port={PORT}&secret={full_secret}"
+
+
 def sync_all_users():
+    """Synchronise the database with the proxy config file.
+
+    Creates missing database records for users present in the config,
+    and adds users from the database back to the config if missing.
+    """
     proxy_users = load_users()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()

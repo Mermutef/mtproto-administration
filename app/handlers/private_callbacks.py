@@ -1,12 +1,27 @@
+"""Private-chat callback handlers.
+
+Handles inline button actions initiated by regular users in their
+private chat with the bot — cancelling requests and requesting
+a new key for a specific protocol.
+"""
+
+import logging
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 import app.db as db
-import app.proxy_manager as proxy_manager
-from app.config import ADMIN_GROUP_ID, XRAY_SUB_URL_BASE, get_active_protocols
+from app.config import ADMIN_GROUP_ID, get_active_protocols
 from app.locales.ru import MESSAGES
-from app.services.key_service import get_or_update_sub_id
+from app.services.registry import registry
 
 
 async def handle_cancel_req(query, data, user_id, context):
+    """Handle /cancel callback: reject a specific pending request.
+
+    Args:
+        query: The callback query.
+        data: Callback data (cancel_req_<id> or cancel_req_cancel).
+        user_id: Telegram user ID.
+        context: Bot context.
+    """
     action = data[len("cancel_req_"):]
     if action == "cancel":
         await query.edit_message_text(MESSAGES["cancel_selection_cancelled"])
@@ -30,23 +45,32 @@ async def handle_cancel_req(query, data, user_id, context):
 
 
 async def handle_req_service(query, data, user_id, user_name, context):
+    """Handle protocol selection: create an access request.
+
+    Checks for existing keys and pending requests before creating
+    a new one.
+
+    Args:
+        query: The callback query.
+        data: Callback data (req_service_<protocol>).
+        user_id: Telegram user ID.
+        user_name: Display name.
+        context: Bot context.
+    """
     protocol = data.split("_")[2]
     if protocol not in get_active_protocols():
         await query.edit_message_text(MESSAGES[f"{protocol}_not_supported"])
         return
 
+    svc = registry.get(protocol)
+
     existing_keys = db.get_user_active_keys(user_id, protocol)
     if existing_keys:
         msg = MESSAGES["already_has_keys"].format(protocol=protocol.upper())
         for key in existing_keys:
-            if protocol == 'mtproto':
-                link = proxy_manager.get_proxy_link(key['secret'])
-                msg += f"\n\nЛогин: <code>{key['username']}</code>\nСсылка: {link}"
-            elif protocol == 'xray':
-                email = key.get('email')
-                sub_id = get_or_update_sub_id(email)
-                subscribe_url = f"{XRAY_SUB_URL_BASE}{sub_id}" if sub_id else ""
-                msg += f"\n\nEmail: <code>{email}</code>\nСсылка: {subscribe_url}"
+            identifier = svc.get_identifier(key) if svc else key.get('username', '—')
+            link = svc.get_link_for_key(key) if svc else ""
+            msg += f"\n\nЛогин: <code>{identifier}</code>\nСсылка: {link}"
         await query.edit_message_text(msg, parse_mode="HTML")
         return
 
@@ -73,4 +97,4 @@ async def handle_req_service(query, data, user_id, user_name, context):
             parse_mode="HTML"
         )
     except Exception as e:
-        print(f"Ошибка отправки в группу: {e}")
+        logging.error(f"Error sending message to admin group: {e}")

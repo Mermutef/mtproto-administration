@@ -1,13 +1,57 @@
+"""3x-ui (Xray) panel API client.
+
+Provides a thread-safe HTTP client for interacting with the 3x-ui
+administration panel to manage Xray (VLESS Reality) inbounds and
+clients.
+
+Exports:
+    get_xui_client: Thread-local singleton factory.
+    XUIClient: Low-level API client class.
+"""
+
 import requests
 import json
 import uuid
 import time
 import secrets
+import threading
+import logging
 from typing import Optional, List, Dict, Any
 from app.config import XUI_BASE_URL, XUI_USERNAME, XUI_PASSWORD
 
 
+_xui_per_thread = threading.local()
+
+
+def get_xui_client():
+    """Get a thread-local XUIClient singleton.
+
+    Returns:
+        An :class:`XUIClient` instance, or ``None`` if initialisation
+        failed (e.g. panel unreachable).
+    """
+    client = getattr(_xui_per_thread, 'client', None)
+    if client is None:
+        try:
+            _xui_per_thread.client = XUIClient()
+        except Exception as e:
+            logging.error(f"Failed to initialise XUIClient: {e}")
+            _xui_per_thread.client = False
+        client = _xui_per_thread.client
+    return client if client is not False else None
+
+
 class XUIClient:
+    """HTTP client for the 3x-ui panel API.
+
+    Handles authentication, session management, and CRUD operations
+    for Xray inbounds and clients.
+
+    Args:
+        max_retries: Number of retries on transient errors.
+        timeout: Request timeout in seconds.
+    """
+
     API_LOGIN = "/login"
     API_LOGIN_ALT = "/panel/login"
     API_INBOUNDS_LIST = "/panel/api/inbounds/list"
@@ -29,6 +73,16 @@ class XUIClient:
         self._authenticated = True
 
     def _login(self) -> bool:
+        """Authenticate with the 3x-ui panel and store the session cookie.
+
+        Tries the primary and alternative login endpoints.
+
+        Returns:
+            True on success.
+
+        Raises:
+            Exception: If login fails after all retries.
+        """
         self.session.cookies.clear()
 
         login_url = f"{self.base_url}{self.API_LOGIN}"
@@ -42,7 +96,7 @@ class XUIClient:
 
         if not resp or not resp.ok:
             body = resp.text[:300] if resp else "No response"
-            raise Exception(f"Не удалось авторизоваться в 3x-ui (status {resp.status_code if resp else 'N/A'})")
+            raise Exception(f"Failed to authenticate with 3x-ui (status {resp.status_code if resp else 'N/A'})")
 
         session_cookie = self._get_session_cookie()
         if not session_cookie:
@@ -50,12 +104,20 @@ class XUIClient:
             self.session.cookies.clear()
             resp = self._do_login_request(login_url)
             if not resp or not resp.ok or not self._get_session_cookie():
-                raise Exception("Не удалось установить сессию после повторной попытки")
+                raise Exception("Could not establish session after retry")
 
         self._authenticated = True
         return True
 
     def _do_login_request(self, url: str) -> Optional[requests.Response]:
+        """Send a POST login request.
+
+        Args:
+            url: The login endpoint URL.
+
+        Returns:
+            The response object, or None on connection error.
+        """
         try:
             return self.session.post(
                 url,
@@ -67,6 +129,11 @@ class XUIClient:
             return None
 
     def _get_session_cookie(self) -> Optional[str]:
+        """Extract the session cookie from the current session.
+
+        Returns:
+            The cookie value, or None.
+        """
         for name in ['session', '3x-ui', 'x-ui', 'JSESSIONID']:
             value = self.session.cookies.get(name)
             if value:
@@ -74,6 +141,11 @@ class XUIClient:
         return None
 
     def _ensure_authenticated(self) -> bool:
+        """Verify the session is still valid and re-login if needed.
+
+        Returns:
+            True after ensuring a valid session.
+        """
         if self._authenticated:
             try:
                 resp = self.session.get(
@@ -93,6 +165,19 @@ class XUIClient:
             return True
 
     def _request(self, method: str, path: str, **kwargs) -> requests.Response:
+        """Perform an HTTP request with automatic retry and re-authentication.
+
+        Args:
+            method: HTTP method.
+            path: API path (relative to base URL).
+            **kwargs: Extra arguments for ``requests.Session.request``.
+
+        Returns:
+            The response object.
+
+        Raises:
+            Exception: If all retries are exhausted.
+        """
         kwargs.setdefault('timeout', self.timeout)
         kwargs.setdefault('allow_redirects', True)
 
@@ -117,9 +202,22 @@ class XUIClient:
                     continue
                 raise
 
-        raise last_error or Exception("Неизвестная ошибка запроса")
+        raise last_error or Exception("Unknown request error")
 
     def _request_json(self, method: str, path: str, **kwargs) -> Dict[str, Any]:
+        """Perform an HTTP request and parse the JSON response.
+
+        Args:
+            method: HTTP method.
+            path: API path.
+            **kwargs: Extra arguments for ``_request``.
+
+        Returns:
+            Parsed JSON dict.
+
+        Raises:
+            Exception: On invalid JSON.
+        """
         resp = self._request(method, path, **kwargs)
 
         if resp.status_code == 200 and not resp.text.strip():
@@ -129,9 +227,18 @@ class XUIClient:
         try:
             return resp.json() if resp.text.strip() else {}
         except json.JSONDecodeError as e:
-            raise Exception(f"Невалидный JSON от сервера: {e}")
+            raise Exception(f"Invalid JSON from server: {e}")
 
     def get_client_sub_id(self, inbound_id: int, email: str) -> str:
+        """Get the subscription ID for a client by email.
+
+        Args:
+            inbound_id: The inbound configuration ID.
+            email: The client email address.
+
+        Returns:
+            The subscription ID string, or empty string.
+        """
         self._ensure_authenticated()
         try:
             clients = self.get_clients(inbound_id)
@@ -144,6 +251,20 @@ class XUIClient:
 
     def add_client(self, inbound_id: int, email: str, uuid_str: Optional[str] = None,
                    flow: str = "xtls-rprx-vision") -> Dict[str, str]:
+        """Add a new Xray client to the given inbound.
+
+        Args:
+            inbound_id: The inbound ID.
+            email: Client email (used as identifier).
+            uuid_str: Optional UUID; auto-generated if omitted.
+            flow: Xray flow setting.
+
+        Returns:
+            A dict with ``uuid`` and ``sub_id`` keys.
+
+        Raises:
+            Exception: If the API call fails.
+        """
         self._ensure_authenticated()
 
         if not uuid_str:
@@ -168,18 +289,30 @@ class XUIClient:
         )
 
         if not resp_data.get("success"):
-            raise Exception(resp_data.get("msg", "Ошибка при добавлении клиента"))
+            raise Exception(resp_data.get("msg", "Error adding client"))
 
         return {"uuid": uuid_str, "sub_id": sub_id}
 
     def remove_client(self, inbound_id: int, email: str) -> bool:
+        """Remove an Xray client by email.
+
+        Args:
+            inbound_id: The inbound ID.
+            email: The client email to remove.
+
+        Returns:
+            True on success.
+
+        Raises:
+            Exception: If the client is not found or removal fails.
+        """
         self._ensure_authenticated()
 
         clients = self.get_clients(inbound_id)
         client_to_delete = next((c for c in clients if c.get("email") == email), None)
 
         if not client_to_delete:
-            raise Exception(f"Клиент с email {email} не найден в inbound {inbound_id}")
+            raise Exception(f"Client with email {email} not found in inbound {inbound_id}")
 
         client_id = client_to_delete.get("id")
         path = self.API_INBOUND_DEL_CLIENT.format(inbound_id=inbound_id, client_id=client_id)
@@ -191,7 +324,7 @@ class XUIClient:
                 data = resp.json()
                 if data.get("success"):
                     return True
-                raise Exception(data.get("msg", "Неизвестная ошибка при удалении"))
+                raise Exception(data.get("msg", "Unknown error during deletion"))
             except json.JSONDecodeError:
                 return True
         else:
@@ -202,19 +335,35 @@ class XUIClient:
                 raise Exception(f"HTTP {resp.status_code}: {resp.text[:100]}")
 
     def get_clients(self, inbound_id: int) -> List[Dict[str, Any]]:
+        """List all clients for a given inbound.
+
+        Args:
+            inbound_id: The inbound ID.
+
+        Returns:
+            A list of client dicts.
+
+        Raises:
+            Exception: If the API call fails.
+        """
         self._ensure_authenticated()
 
         path = self.API_INBOUND_GET.format(inbound_id=inbound_id)
         resp_data = self._request_json("GET", path)
 
         if not resp_data.get("success"):
-            raise Exception(resp_data.get("msg", "Ошибка получения клиентов"))
+            raise Exception(resp_data.get("msg", "Error fetching clients"))
 
         inbound = resp_data["obj"]
         settings = json.loads(inbound["settings"])
         return settings.get("clients", [])
 
     def get_inbounds(self) -> List[Dict[str, Any]]:
+        """List all inbounds from the panel.
+
+        Returns:
+            A list of inbound dicts.
+        """
         self._ensure_authenticated()
 
         resp_data = self._request_json("GET", self.API_INBOUNDS_LIST)
@@ -225,13 +374,27 @@ class XUIClient:
 
     def update_client(self, inbound_id: int, client_uuid: str, new_email: str,
                       **extra_fields) -> bool:
+        """Update a client's email (rename) and/or extra fields.
+
+        Args:
+            inbound_id: The inbound ID.
+            client_uuid: The UUID of the client to update.
+            new_email: The new email to assign.
+            **extra_fields: Additional fields to update on the client.
+
+        Returns:
+            True on success.
+
+        Raises:
+            Exception: If the update fails.
+        """
         self._ensure_authenticated()
 
         path = self.API_INBOUND_GET.format(inbound_id=inbound_id)
         resp_data = self._request_json("GET", path)
 
         if not resp_data.get("success"):
-            raise Exception("Не удалось получить данные inbound")
+            raise Exception("Failed to fetch inbound data")
 
         inbound = resp_data["obj"]
         settings = json.loads(inbound["settings"])
@@ -247,7 +410,7 @@ class XUIClient:
                 break
 
         if not updated:
-            raise Exception(f"Клиент с UUID {client_uuid} не найден в inbound {inbound_id}")
+            raise Exception(f"Client with UUID {client_uuid} not found in inbound {inbound_id}")
 
         inbound["settings"] = json.dumps(settings, ensure_ascii=False)
 
@@ -260,16 +423,29 @@ class XUIClient:
         if resp_data.get("success"):
             return True
 
-        raise Exception(resp_data.get("msg", "Ошибка обновления inbound"))
+        raise Exception(resp_data.get("msg", "Error updating inbound"))
 
     def get_traffic(self, inbound_id: int, email: str) -> Dict[str, Any]:
+        """Get traffic statistics for a specific client.
+
+        Args:
+            inbound_id: The inbound ID.
+            email: The client email.
+
+        Returns:
+            A dict with ``email``, ``up``, ``down``, ``total``,
+            ``expiry_time``, and ``enable`` keys.
+
+        Raises:
+            Exception: If the client is not found.
+        """
         self._ensure_authenticated()
 
         clients = self.get_clients(inbound_id)
         client = next((c for c in clients if c.get("email") == email), None)
 
         if not client:
-            raise Exception(f"Клиент {email} не найден")
+            raise Exception(f"Client {email} not found")
 
         return {
             "email": client.get("email"),
@@ -281,6 +457,7 @@ class XUIClient:
         }
 
     def close(self):
+        """Close the underlying HTTP session."""
         if self.session:
             self.session.close()
 

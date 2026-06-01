@@ -36,6 +36,8 @@ MESSAGES = {
     "user_cancelled_request": "ℹ️ Пользователь {user_id} отменил заявку #{req_id}.",
     "not_in_private": "Пожалуйста, пишите мне в личные сообщения.",
     "unknown_command": "❓ Неизвестная команда. Используйте /start",
+    "choose_protocol": "Выберите протокол для получения ключа:",
+    "no_permission": "⛔ У вас нет прав администратора.",
 
     # Административные
     "admin_start": (
@@ -90,6 +92,21 @@ MESSAGES = {
         "Приятного использования!\n\n"
         "P.S. Вы также можете открыть ссылку на подписку в браузере, чтобы получить ключ для других приложений."
     ),
+
+    # Веб-API сообщения
+    "web_login_empty": "Логин не может быть пустым",
+    "web_email_empty": "Email не может быть пустым",
+    "web_name_empty": "Имя не может быть пустым",
+    "web_invalid_identifier": "Недопустимый идентификатор: '{identifier}'",
+    "web_user_added": "Пользователь '{username}' добавлен",
+    "web_client_added": "Клиент '{email}' добавлен",
+    "web_identifier_required": "Идентификатор не указан",
+    "web_user_deleted": "Пользователь '{username}' удалён",
+    "web_client_deleted": "Клиент '{email}' удалён",
+    "web_user_not_found": "Пользователь '{username}' не найден",
+    "web_client_not_found": "Клиент '{email}' не найден",
+    "web_old_new_required": "Старое и новое имя обязательны",
+    "web_old_new_email_required": "Старый и новый email обязательны",
 
     # Список пользователей
     "users_choose_protocol": "Выберите протокол для просмотра пользователей:",
@@ -151,7 +168,6 @@ MESSAGES = {
     "key_revoked_callback": "✅ Ключ <code>{username}</code> отозван.",
     "key_revoked_callback_notification": "⚠️ Ваш ключ <code>{username}</code> был отозван администратором.",
     "button_only_in_group": "⛔ Эта кнопка работает только в админской группе.",
-    "no_permission": "⛔ У вас нет прав для обработки заявок.",
     "multiple_pending_requests": "У вас несколько активных заявок. Выберите, какую отменить:",
     "cancel_selection_cancelled": "❎ Отмена отмены.",
     "cancel_request_not_found": "❌ Эта заявка уже обработана или не существует.",

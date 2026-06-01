@@ -1,3 +1,10 @@
+"""Database access layer for the VPN administration bot.
+
+Uses SQLite for persistent storage of users, keys, access requests,
+and message caching. All functions take care of opening and closing
+connections, so callers don't need to manage database lifecycle.
+"""
+
 import sqlite3
 import json
 import time
@@ -6,6 +13,16 @@ from app.config import DB_PATH
 
 
 def init_db():
+    """Initialize the database schema.
+
+    Creates the following tables if they don't exist:
+        - users: Registered users with Telegram IDs.
+        - keys: VPN protocol keys associated with users.
+        - requests: Access requests requiring admin approval.
+        - message_cache: Cached media group messages for forwarding.
+
+    Also creates indexes on message_cache for performance.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users
@@ -43,6 +60,14 @@ def init_db():
 
 
 def get_user_by_telegram_id(telegram_id):
+    """Look up a username by Telegram ID.
+
+    Args:
+        telegram_id: The Telegram user ID.
+
+    Returns:
+        The username string, or None if not found.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT username FROM users WHERE telegram_id = ?", (str(telegram_id),))
@@ -52,6 +77,11 @@ def get_user_by_telegram_id(telegram_id):
 
 
 def get_all_users():
+    """Return all registered users.
+
+    Returns:
+        A list of (username, telegram_id, created_at) tuples.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT username, telegram_id, created_at FROM users")
@@ -61,6 +91,18 @@ def get_all_users():
 
 
 def add_request(user_id, user_name, protocol='mtproto'):
+    """Create a new access request for a user.
+
+    If the user doesn't exist yet, they are created first.
+
+    Args:
+        user_id: Telegram user ID.
+        user_name: Display name or username.
+        protocol: Requested VPN protocol.
+
+    Returns:
+        The new request ID.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT id FROM users WHERE telegram_id = ?", (str(user_id),))
@@ -80,6 +122,14 @@ def add_request(user_id, user_name, protocol='mtproto'):
 
 
 def get_request(request_id):
+    """Retrieve a request by its ID.
+
+    Args:
+        request_id: The request identifier.
+
+    Returns:
+        A tuple (telegram_id, user_name, protocol, status) or None.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''SELECT u.telegram_id, r.user_name, r.protocol, r.status
@@ -87,10 +137,16 @@ def get_request(request_id):
                  WHERE r.request_id = ?''', (request_id,))
     result = c.fetchone()
     conn.close()
-    return result  # (telegram_id, user_name, protocol, status)
+    return result
 
 
 def update_request_status(request_id, status):
+    """Update the status of a request.
+
+    Args:
+        request_id: The request identifier.
+        status: New status (e.g. 'approved', 'rejected', 'revoked').
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("UPDATE requests SET status = ? WHERE request_id = ?", (status, request_id))
@@ -99,6 +155,15 @@ def update_request_status(request_id, status):
 
 
 def get_user_requests(telegram_id):
+    """Get all requests made by a specific user.
+
+    Args:
+        telegram_id: The Telegram user ID.
+
+    Returns:
+        A list of (request_id, status, created_at, protocol) tuples,
+        ordered by creation date descending.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''SELECT r.request_id, r.status, r.created_at, r.protocol
@@ -111,6 +176,11 @@ def get_user_requests(telegram_id):
 
 
 def revoke_user_requests(telegram_id):
+    """Revoke all approved requests for a user.
+
+    Args:
+        telegram_id: The Telegram user ID.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''UPDATE requests SET status = 'revoked'
@@ -121,6 +191,11 @@ def revoke_user_requests(telegram_id):
 
 
 def get_all_users_with_telegram():
+    """Get users who have a valid, known Telegram ID.
+
+    Returns:
+        A list of (username, telegram_id) tuples.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
@@ -131,6 +206,14 @@ def get_all_users_with_telegram():
 
 
 def get_mtproto_secret(username):
+    """Get the MTProto secret for a given username.
+
+    Args:
+        username: The user's login name.
+
+    Returns:
+        The secret string, or None.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''SELECT json_extract(key_data, '$.secret') FROM keys
@@ -142,6 +225,15 @@ def get_mtproto_secret(username):
 
 
 def get_user_active_keys(telegram_id, protocol=None):
+    """Get all active keys for a user, optionally filtered by protocol.
+
+    Args:
+        telegram_id: The Telegram user ID.
+        protocol: Optional protocol name filter (e.g. 'mtproto', 'xray').
+
+    Returns:
+        A list of parsed key_data dicts.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     if protocol:
@@ -168,6 +260,11 @@ def get_user_active_keys(telegram_id, protocol=None):
 
 
 def get_unique_telegram_ids():
+    """Get all distinct, valid Telegram user IDs.
+
+    Returns:
+        A list of Telegram ID strings.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
@@ -181,6 +278,16 @@ def get_unique_telegram_ids():
 
 
 def cache_message(chat_id: int, message_id: int, media_group_id: str, date: float):
+    """Cache a media group message for later batch forwarding.
+
+    Old entries older than 7 days are pruned.
+
+    Args:
+        chat_id: Chat where the message was sent.
+        message_id: Unique message ID.
+        media_group_id: Group identifier for album messages.
+        date: Unix timestamp of the message.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     cutoff = time.time() - 7 * 24 * 3600
@@ -192,6 +299,15 @@ def cache_message(chat_id: int, message_id: int, media_group_id: str, date: floa
 
 
 def get_media_group_message_ids(chat_id: int, media_group_id: str) -> list[int]:
+    """Get all cached message IDs for a media group.
+
+    Args:
+        chat_id: The source chat.
+        media_group_id: The media group identifier.
+
+    Returns:
+        Sorted list of message IDs.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("SELECT message_id FROM message_cache WHERE chat_id = ? AND media_group_id = ? ORDER BY message_id",
@@ -202,6 +318,11 @@ def get_media_group_message_ids(chat_id: int, media_group_id: str) -> list[int]:
 
 
 def get_users_with_active_keys():
+    """Get all users who have at least one active key.
+
+    Returns:
+        A list of (username, telegram_id, created_at) tuples.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""
@@ -217,6 +338,14 @@ def get_users_with_active_keys():
 
 
 def get_users_with_active_keys_for_protocol(protocol):
+    """Get all users who have an active key for a specific protocol.
+
+    Args:
+        protocol: The protocol name to filter by.
+
+    Returns:
+        A list of (username, telegram_id, created_at) tuples.
+    """
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute("""

@@ -1,3 +1,9 @@
+"""Central callback query dispatcher.
+
+Routes inline button callbacks to the appropriate handler based on
+the callback data prefix.
+"""
+
 from telegram import Update
 from telegram.ext import ContextTypes
 from .private_callbacks import handle_cancel_req, handle_req_service
@@ -7,6 +13,12 @@ from app.locales.ru import MESSAGES
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Dispatch callback queries to specialised handlers.
+
+    Routing logic:
+        * Private chat callbacks (cancel_req_*, req_service_*)
+        * Admin group callbacks (revoke_*, users_*, user_info_*, add_*, approve_*, reject_*)
+    """
     query = update.callback_query
     await query.answer()
     user = update.effective_user
@@ -64,6 +76,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle unknown commands in private chat and admin group."""
     if update.effective_chat.type == "private":
         await update.message.reply_text(MESSAGES["unknown_command"])
     elif update.effective_chat.id == ADMIN_GROUP_ID:

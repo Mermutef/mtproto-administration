@@ -1,7 +1,13 @@
+"""Telegram bot entry point.
+
+Initialises the database, synchronises MTProto proxy users,
+registers command and callback handlers, and starts polling.
+"""
+
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
 from app.config import TOKEN, ADMIN_GROUP_ID
 import app.db as db
-import app.proxy_manager as proxy_manager
+from app.services.mtproto import mtproto_service
 from app.handlers import (
     start, request_key, status_command, cancel_command,
     start_admin, adduser_command, users_command, revoke_command,
@@ -12,8 +18,9 @@ from app.handlers.admin_handlers import broadcast_command, sendto_command, cache
 
 
 def main():
+    """Initialise and start the Telegram bot."""
     db.init_db()
-    proxy_manager.sync_all_users()
+    mtproto_service.sync_all_users()
 
     app = Application.builder().token(TOKEN).build()
 
