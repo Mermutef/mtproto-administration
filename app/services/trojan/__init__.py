@@ -30,12 +30,6 @@ class TrojanService(ThreeXUIService):
     def sub_url_base(self) -> str:
         return TROJAN_SUB_URL_BASE
 
-    def _build_client_payload(self, email: str, uuid_str: str, sub_id: str) -> dict:
-        return {
-            "email": email,
-            "enable": True,
-            "totalGB": 0,
-        }
 
 
 # Singleton

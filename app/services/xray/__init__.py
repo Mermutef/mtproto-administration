@@ -30,13 +30,9 @@ class XrayService(ThreeXUIService):
     def sub_url_base(self) -> str:
         return XRAY_SUB_URL_BASE
 
-    def _build_client_payload(self, email: str, uuid_str: str, sub_id: str) -> dict:
-        return {
-            "email": email,
-            "flow": "xtls-rprx-vision",
-            "enable": True,
-            "totalGB": 0,
-        }
+    @property
+    def _flow(self) -> str:
+        return "xtls-rprx-vision"
 
 
 # Singleton
