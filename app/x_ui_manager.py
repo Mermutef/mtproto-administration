@@ -283,15 +283,16 @@ class XUIClient:
 
         sub_id = secrets.token_urlsafe(self.SUB_ID_LEN)
 
-        settings = {
-            "clients": [{
-                "email": email,
-                "id": uuid_str,
-                "flow": flow,
-                "enable": True,
-                "subId": sub_id
-            }]
+        # 3x-ui 3.2.9+ rejects empty tgId — do not include it.
+        client_payload = {
+            "email": email,
+            "id": uuid_str,
+            "flow": flow,
+            "enable": True,
+            "subId": sub_id,
+            "totalGB": 0,
         }
+        settings = {"clients": [client_payload]}
 
         resp_data = self._request_json(
             "POST",
@@ -425,6 +426,12 @@ class XUIClient:
 
         inbound = resp_data["obj"]
         settings = self._parse_settings(inbound["settings"])
+
+        # 3x-ui 3.2.9+ validates tgId; strip empty values
+        # before writing the whole inbound back.
+        for client in settings.get("clients", []):
+            if not client.get("tgId"):
+                client.pop("tgId", None)
 
         updated = False
         for client in settings.get("clients", []):
