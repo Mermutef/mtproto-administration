@@ -107,6 +107,19 @@ MESSAGES = {
     ),
     "trojan_client_added": "✅ Trojan-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}",
 
+    # Hysteria2
+    "hysteria2_key_granted": (
+        "✅ Администратор выдал вам ключ Hysteria2!\n"
+        "Логин: <code>{email}</code>\n"
+        "Ссылка на подписку: {subscribe_url}\n\n"
+        "<b>Как подключиться:</b>\n"
+        "1. Скачайте и установите Hiddify или любой другой клиент с поддержкой подписок.\n"
+        "2. Скопируйте ссылку на подписку выше.\n"
+        "3. Откройте приложение, вставьте ссылку и подключитесь."
+    ),
+    "hysteria2_key_created_sent": "✅ Hysteria2-ключ для @{username} создан и отправлен.",
+    "hysteria2_client_added": "✅ Hysteria2-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}",
+
     # Веб-API сообщения
     "web_login_empty": "Логин не может быть пустым",
     "web_email_empty": "Email не может быть пустым",

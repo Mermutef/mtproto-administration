@@ -91,17 +91,19 @@ async def handle_revoke_xray(query, data, context):
         data: Callback data (``revoke_xray_<email>``).
         context: Bot context.
     """
-    email = data.split("_", 2)[2]
+    parts = data.split("_", 2)
+    protocol = parts[0].replace("revoke_", "")
+    email = parts[2]
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "SELECT u.username FROM users u JOIN keys k ON u.id = k.user_id WHERE k.protocol='xray' AND json_extract(k.key_data, '$.email') = ?",
-        (email,))
+        "SELECT u.username FROM users u JOIN keys k ON u.id = k.user_id WHERE k.protocol=? AND json_extract(k.key_data, '$.email') = ?",
+        (protocol, email))
     row = c.fetchone()
     conn.close()
     if row:
         username = row[0]
-        await _revoke_key_by_protocol(username, 'xray', query, context, email=email)
+        await _revoke_key_by_protocol(username, protocol, query, context, email=email)
     else:
         await query.edit_message_text(MESSAGES["revoke_user_not_found"].format(identifier=email))
 

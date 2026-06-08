@@ -174,9 +174,10 @@ class ThreeXUIService(BaseVpnService):
         email = username
         try:
             client = api.client.get_by_email(email)
-            if not client or not client.id:
+            if not client or not client.uuid:
                 return False
-            api.client.delete(self.inbound_id, client.id)
+            # Use uuid (string) not id (int) — 3x-ui API expects string
+            api.client.delete(self.inbound_id, client.uuid)
         except Exception as e:
             logging.error(f"Error removing {self.protocol_name} client {email}: {e}")
             return False
@@ -275,7 +276,7 @@ class ThreeXUIService(BaseVpnService):
 
         client.email = new_username
         try:
-            api.client.update(client.id, client)
+            api.client.update(client.uuid, client)
         except Exception as e:
             return False, f"Update error: {e}"
 
