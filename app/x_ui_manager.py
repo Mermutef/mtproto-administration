@@ -68,6 +68,15 @@ class XUIClient:
         self.max_retries = max_retries
         self.timeout = timeout
         self._authenticated = False
+        self._token_auth = bool(XUI_API_TOKEN)
+
+        if self._token_auth:
+            # 3x-ui 3.2.9+: Bearer token auth — no session cookie needed.
+            # See https://github.com/MHSanaei/3x-ui for API docs.
+            self.session.headers.update({"Authorization": f"Bearer {XUI_API_TOKEN}"})
+            logging.info("Using XUI_API_TOKEN (Bearer) for 3x-ui API authentication")
+            self._authenticated = True
+            return
 
         self._login()
         self._authenticated = True
@@ -75,8 +84,8 @@ class XUIClient:
     def _login(self) -> bool:
         """Authenticate with the 3x-ui panel and store the session cookie.
 
-        If ``XUI_API_TOKEN`` is set, it is injected directly as the
-        session cookie and no login request is performed.
+        If ``XUI_API_TOKEN`` is set, Bearer auth is used instead.
+        No login request is performed.
 
         Returns:
             True on success.
@@ -86,9 +95,8 @@ class XUIClient:
         """
         self.session.cookies.clear()
 
-        if XUI_API_TOKEN:
-            self.session.cookies.set("3x-ui", XUI_API_TOKEN)
-            logging.info("Using XUI_API_TOKEN for 3x-ui authentication")
+        # Bearer token auth is handled in __init__ — nothing to do here.
+        if self._token_auth:
             self._authenticated = True
             return True
 
@@ -154,9 +162,15 @@ class XUIClient:
     def _ensure_authenticated(self) -> bool:
         """Verify the session is still valid and re-login if needed.
 
+        For Bearer-token auth, re-authentication is not possible —
+        just verify connectivity.
+
         Returns:
             True after ensuring a valid session.
         """
+        if self._token_auth:
+            return True
+
         if self._authenticated:
             try:
                 resp = self.session.get(
