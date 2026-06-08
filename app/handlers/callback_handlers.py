@@ -50,6 +50,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         from .admin_callbacks import handle_revoke_xray
         await handle_revoke_xray(query, data, context)
         return
+    if data.startswith("revoke_trojan_") or data.startswith("revoke_hysteria2_"):
+        from .admin_callbacks import handle_revoke_xray
+        # 3x-ui protocols use the same email-based lookup as xray
+        await handle_revoke_xray(query, data, context)
+        return
     if data == "revoke_cancel":
         from .admin_callbacks import handle_revoke_cancel
         await handle_revoke_cancel(query, data, context)

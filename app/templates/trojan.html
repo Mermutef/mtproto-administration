@@ -1,0 +1,53 @@
+{% extends "layout.html" %}
+{% set theme = "trojan" %}
+{% set favicon = "trojan-favicon.svg" %}
+{% block title %}Trojan Admin{% endblock %}
+
+{% block additionalCSS %}
+    <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.22.1/dist/bootstrap-table.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-shield-check"></i> Пользователи Trojan</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-wrapper m-2">
+            <div class="table-responsive">
+                <table id="users-table"
+                       data-toggle="table"
+                       data-url="/api/trojan/users"
+                       data-pagination="true"
+                       data-page-size="10"
+                       data-page-list="[10,20,50,100,200]"
+                       data-filter-control="true"
+                       data-search="true"
+                       data-side-pagination="client"
+                       data-striped="true"
+                       data-sort-name="created_at"
+                       data-sort-order="desc"
+                       class="table mb-0 table-hover">
+                    <thead>
+                        <tr>
+                            <th data-field="email" data-sortable="true" data-formatter="usernameFormatter">Логин</th>
+                            <th data-field="uuid" data-sortable="true">UUID</th>
+                            <th data-field="telegram_id" data-formatter="tgIDFormatter" data-sortable="true" data-align="center">Telegram ID</th>
+                            <th data-field="created_at" data-sortable="true" data-formatter="dateFormatter" data-sorter="dateSorter" data-align="center">Дата создания</th>
+                            <th data-field="enable" data-formatter="statusFormatter" data-sortable="true" data-align="center">Статус</th>
+                            <th data-field="link" data-formatter="linkFormatter" data-align="center">Ссылка</th>
+                            <th data-field="actions" data-formatter="actionFormatter" data-align="center">Действия</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block additionalJS %}
+    <script src="https://unpkg.com/bootstrap-table@1.22.1/dist/bootstrap-table.min.js"></script>
+    <script src="https://unpkg.com/bootstrap-table@1.22.1/dist/extensions/filter-control/bootstrap-table-filter-control.min.js"></script>
+    <script src="{{ url_for('static', filename='js/trojan.js') }}"></script>
+{% endblock %}

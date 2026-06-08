@@ -17,6 +17,7 @@ from app.services.base import BaseVpnService
 from app.services.mtproto import mtproto_service
 from app.services.xray import xray_service
 from app.services.hysteria2 import hysteria2_service
+from app.services.trojan import trojan_service
 
 
 class ServiceRegistry:
@@ -85,3 +86,4 @@ registry = ServiceRegistry()
 registry.register(mtproto_service)
 registry.register(xray_service)
 registry.register(hysteria2_service)
+registry.register(trojan_service)

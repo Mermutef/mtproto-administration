@@ -137,10 +137,17 @@ def xray_panel():
     return render_template("xray.html")
 
 
+@app.route("/trojan")
+@auth_required
+def trojan_panel():
+    """Render the Trojan management panel."""
+    return render_template("trojan.html")
+
+
 @app.route("/hysteria2")
 @auth_required
 def hysteria2_panel():
-    """Render the Hysteria2 management panel (placeholder)."""
+    """Render the Hysteria2 management panel."""
     return render_template("hysteria2.html")
 
 

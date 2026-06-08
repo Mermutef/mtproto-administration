@@ -185,9 +185,11 @@ async def _send_key_to_user(context, chat_id: int, protocol: str, identifier: st
         return
     # Build minimal key_data embedding the real link so the formatter
     # can produce the correct message without requiring stored secrets.
+    # All 3x-ui-managed protocols (xray, trojan, hysteria2) use "email".
     if protocol == "mtproto":
         key_data = {"username": identifier, "secret": "", "_link_override": link}
-    elif protocol == "xray":
+    elif hasattr(svc, 'inbound_id') and svc.inbound_id:
+        # 3x-ui protocols — use email as the identifier field
         key_data = {"email": identifier, "sub_id": "", "uuid": "", "_link_override": link}
     else:
         key_data = {"username": identifier, "_link_override": link}
@@ -726,7 +728,7 @@ async def resend_keys_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         try:
             uid = int(uid)
             if filter_protocol == "all":
-                for proto in ("mtproto", "xray"):
+                for proto in get_active_protocols():
                     keys = get_user_active_keys(uid, proto)
                     for key in keys:
                         await send_existing_key(uid, proto, key, context)

@@ -22,6 +22,13 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if "trojan" in active_protocols %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('trojan_panel') }}">
+                        <i class="bi bi-shield-check"></i> Trojan
+                    </a>
+                </li>
+                {% endif %}
                 {% if "hysteria2" in active_protocols %}
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('hysteria2_panel') }}">

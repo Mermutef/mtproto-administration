@@ -60,6 +60,8 @@ def get_active_protocols():
         active.append("mtproto")
     if XRAY_ENABLED:
         active.append("xray")
+    if TROJAN_ENABLED:
+        active.append("trojan")
     if HYSTERIA2_ENABLED:
         active.append("hysteria2")
     return active
@@ -95,11 +97,18 @@ XUI_API_TOKEN = os.getenv("XUI_API_TOKEN")
 XRAY_INBOUND_ID = int(os.getenv("XRAY_INBOUND_ID", "1"))
 XRAY_SUB_URL_BASE = os.getenv("XRAY_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
 
+TROJAN_INBOUND_ID = int(os.getenv("TROJAN_INBOUND_ID", "0"))
+TROJAN_SUB_URL_BASE = os.getenv("TROJAN_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
+
+HYSTERIA2_INBOUND_ID = int(os.getenv("HYSTERIA2_INBOUND_ID", "0"))
+HYSTERIA2_SUB_URL_BASE = os.getenv("HYSTERIA2_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
+
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))
 
 MTP_ENABLED = _env_bool("MTP_ENABLED", True)
 XRAY_ENABLED = _env_bool("XRAY_ENABLED", False) and XRAY_INBOUND_ID > 0
-HYSTERIA2_ENABLED = _env_bool("HYSTERIA2_ENABLED", False)
+TROJAN_ENABLED = _env_bool("TROJAN_ENABLED", False) and TROJAN_INBOUND_ID > 0
+HYSTERIA2_ENABLED = _env_bool("HYSTERIA2_ENABLED", False) and HYSTERIA2_INBOUND_ID > 0
 
 USERS_PER_PAGE = int(os.getenv("USERS_PER_PAGE", 10))

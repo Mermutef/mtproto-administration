@@ -1,22 +1,19 @@
-"""Hysteria2 service placeholder.
+"""Hysteria2 service — 3x-ui managed.
 
-Hysteria2 support is not yet implemented. This module provides
-a stub service that always reports the protocol as unavailable.
+Re-exports ``ThreeXUIService`` with Hysteria2-specific settings.
+Previously a stub, now a full 3x-ui protocol implementation.
 
 Exports:
     hysteria2_service: Singleton Hysteria2Service instance.
 """
 
-from typing import List, Dict, Any, Tuple
-from app.config import HYSTERIA2_ENABLED
-from app.services.base import BaseVpnService
+from typing import Dict, Any
+from app.config import HYSTERIA2_INBOUND_ID, HYSTERIA2_SUB_URL_BASE, HYSTERIA2_ENABLED
+from app.services.threexui_base import ThreeXUIService
 
 
-class Hysteria2Service(BaseVpnService):
-    """Placeholder service for Hysteria2 (not yet implemented).
-
-    All user operations return a "not supported" error.
-    """
+class Hysteria2Service(ThreeXUIService):
+    """Hysteria2 client management via 3x-ui API."""
 
     protocol_name = "hysteria2"
     display_name = "Hysteria2"
@@ -24,20 +21,24 @@ class Hysteria2Service(BaseVpnService):
 
     @property
     def enabled(self) -> bool:
-        """Whether Hysteria2 is enabled via the ``HYSTERIA2_ENABLED`` env var."""
         return HYSTERIA2_ENABLED
 
-    def create_user(self, username: str, telegram_id: str = "unknown") -> Tuple[bool, str]:
-        """Not implemented."""
-        return False, "Hysteria2 not supported yet"
+    @property
+    def inbound_id(self) -> int:
+        return HYSTERIA2_INBOUND_ID
 
-    def delete_user(self, username: str) -> bool:
-        """Not implemented."""
-        return False
+    @property
+    def sub_url_base(self) -> str:
+        return HYSTERIA2_SUB_URL_BASE
 
-    def get_users(self) -> List[Dict[str, Any]]:
-        """Not implemented."""
-        return []
+    def _build_client_payload(self, email: str, uuid_str: str, sub_id: str) -> dict:
+        return {
+            "email": email,
+            "id": uuid_str,
+            "enable": True,
+            "subId": sub_id,
+            "totalGB": 0,
+        }
 
 
 # Singleton

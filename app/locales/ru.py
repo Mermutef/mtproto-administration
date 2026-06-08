@@ -56,6 +56,7 @@ MESSAGES = {
     "adduser_choose_protocol": "Выберите протокол для выдачи ключа пользователю <code>{user}</code>:",
     "mtproto_not_supported": "🛡️ MTProto пока не поддерживается.",
     "xray_not_supported": "🌐 Xray пока не поддерживается.",
+    "trojan_not_supported": "🐴 Trojan пока не поддерживается.",
     "hysteria2_not_supported": "⚡ Hysteria2 пока не поддерживается.",
     "user_not_found": "❌ Не найден @{username}. Убедитесь, что пользователь начал диалог с ботом.",
     "user_already_has_key": "⚠️ У @{tg_username} уже есть ключ: <code>{username}</code>",
@@ -65,6 +66,7 @@ MESSAGES = {
     "empty_username": "❌ Логин не может быть пустым.",
     "mtp_key_created_sent": "✅ MTProto-ключ для @{username} создан и отправлен.",
     "xray_key_created_sent": "✅ Xray-ключ для @{username} создан и отправлен.",
+    "trojan_key_created_sent": "✅ Trojan-ключ для @{username} создан и отправлен.",
     "key_created_error": "❌ Ошибка при создании ключа: {error}",
     "mtp_key_granted": (
         "✅ Администратор выдал вам ключ MTProto!\n"
@@ -92,6 +94,18 @@ MESSAGES = {
         "Приятного использования!\n\n"
         "P.S. Вы также можете открыть ссылку на подписку в браузере, чтобы получить ключ для других приложений."
     ),
+
+    # Trojan
+    "trojan_key_granted": (
+        "✅ Администратор выдал вам ключ Trojan!\n"
+        "Логин: <code>{email}</code>\n"
+        "Ссылка на подписку: {subscribe_url}\n\n"
+        "<b>Как подключиться:</b>\n"
+        "1. Скачайте и установите Hiddify или любой другой клиент с поддержкой подписок.\n"
+        "2. Скопируйте ссылку на подписку выше.\n"
+        "3. Откройте приложение, вставьте ссылку и подключитесь."
+    ),
+    "trojan_client_added": "✅ Trojan-клиент '{email}' добавлен.\nСсылка на подписку: {subscribe_url}",
 
     # Веб-API сообщения
     "web_login_empty": "Логин не может быть пустым",
