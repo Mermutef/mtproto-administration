@@ -16,6 +16,8 @@ from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 from abc import abstractmethod
 
+from py3xui import Client
+
 from app.config import DB_PATH
 from app.services.base import BaseVpnService
 from app.x_ui_manager import get_xui, make_client
@@ -59,6 +61,11 @@ class ThreeXUIService(BaseVpnService):
     def create_user(self, username: str, telegram_id: str = "unknown") -> Tuple[bool, str]:
         """Create a client via the 3x-ui API.
 
+        In 3x-ui 3.2.9 email uniqueness is enforced globally across all
+        inbounds.  If a client with the given email already exists (e.g.
+        in the Xray inbound), we re-use its UUID and attach it to *this*
+        inbound instead of creating a duplicate.
+
         Args:
             username: Base name used to generate the email.
             telegram_id: Telegram user ID.
@@ -74,35 +81,67 @@ class ThreeXUIService(BaseVpnService):
         base_name = re.sub(r'[^a-zA-Z0-9_]', '_', username)
         email = f"{base_name}_{telegram_id}"
 
+        # Check if client already exists globally (in any inbound)
+        existing_client = None
         try:
-            inbound = api.inbound.get_by_id(self.inbound_id)
-            existing = inbound.settings.clients if inbound.settings else []
-            for c in existing:
-                if c.email == email:
-                    return False, f"Client with email '{email}' already exists"
-        except Exception as e:
-            return False, f"Error checking existing clients: {e}"
-
-        client = make_client(
-            email=email,
-            enable=True,
-            flow=self._flow,
-            total_gb=0,
-        )
-
-        try:
-            api.client.add(self.inbound_id, [client])
-        except Exception as e:
-            return False, str(e)
-
-        # Fetch back to get uuid and sub_id
-        created = None
-        try:
-            created = api.client.get_by_email(email)
+            existing_client = api.client.get_by_email(email)
         except Exception:
             pass
-        uuid_str = created.id if created else ""
-        sub_id = created.sub_id if created else ""
+
+        if existing_client:
+            # Client already exists globally — attach to *this* inbound
+            # by updating the inbound's settings (how GUI "Attached inbounds" works).
+            uuid_str = existing_client.uuid or ""
+            sub_id = existing_client.sub_id or ""
+
+            try:
+                inbound = api.inbound.get_by_id(self.inbound_id)
+                if inbound.settings is None:
+                    return False, "Inbound has no settings"
+
+                # Add the existing client to this inbound's client list
+                new_client = Client(
+                    email=email,
+                    enable=True,
+                    flow=self._flow,
+                    id=uuid_str,
+                    total_gb=0,
+                )
+                inbound.settings.clients.append(new_client)
+                api.inbound.update(self.inbound_id, inbound)
+            except Exception as e:
+                return False, str(e)
+        else:
+            # Fresh client — check this inbound specifically for duplicates
+            try:
+                inbound = api.inbound.get_by_id(self.inbound_id)
+                existing = inbound.settings.clients if inbound.settings else []
+                for c in existing:
+                    if c.email == email:
+                        return False, f"Client with email '{email}' already exists in this inbound"
+            except Exception as e:
+                return False, f"Error checking existing clients: {e}"
+
+            client = make_client(
+                email=email,
+                enable=True,
+                flow=self._flow,
+                total_gb=0,
+            )
+
+            try:
+                api.client.add(self.inbound_id, [client])
+            except Exception as e:
+                return False, str(e)
+
+            # Fetch back to get uuid and sub_id
+            created = None
+            try:
+                created = api.client.get_by_email(email)
+            except Exception:
+                pass
+            uuid_str = created.id if created else ""
+            sub_id = created.sub_id if created else ""
 
         user_id = self._ensure_user_in_db(email, telegram_id)
         key_data = {"email": email, "uuid": uuid_str, "sub_id": sub_id}
