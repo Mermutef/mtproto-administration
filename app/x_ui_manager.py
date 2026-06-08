@@ -17,7 +17,7 @@ import secrets
 import threading
 import logging
 from typing import Optional, List, Dict, Any
-from app.config import XUI_BASE_URL, XUI_USERNAME, XUI_PASSWORD
+from app.config import XUI_BASE_URL, XUI_USERNAME, XUI_PASSWORD, XUI_API_TOKEN
 
 
 _xui_per_thread = threading.local()
@@ -75,7 +75,8 @@ class XUIClient:
     def _login(self) -> bool:
         """Authenticate with the 3x-ui panel and store the session cookie.
 
-        Tries the primary and alternative login endpoints.
+        If ``XUI_API_TOKEN`` is set, it is injected directly as the
+        session cookie and no login request is performed.
 
         Returns:
             True on success.
@@ -84,6 +85,12 @@ class XUIClient:
             Exception: If login fails after all retries.
         """
         self.session.cookies.clear()
+
+        if XUI_API_TOKEN:
+            self.session.cookies.set("3x-ui", XUI_API_TOKEN)
+            logging.info("Using XUI_API_TOKEN for 3x-ui authentication")
+            self._authenticated = True
+            return True
 
         login_url = f"{self.base_url}{self.API_LOGIN}"
 
@@ -134,10 +141,14 @@ class XUIClient:
         Returns:
             The cookie value, or None.
         """
-        for name in ['session', '3x-ui', 'x-ui', 'JSESSIONID']:
+        for name in ['3x-ui', 'session', 'x-ui', 'JSESSIONID', 'xui_session', '3XUI_SESSION']:
             value = self.session.cookies.get(name)
             if value:
                 return value
+        # Fallback: return the first non-empty cookie
+        for cookie in self.session.cookies:
+            if cookie.value:
+                return cookie.value
         return None
 
     def _ensure_authenticated(self) -> bool:
@@ -334,6 +345,22 @@ class XUIClient:
             except json.JSONDecodeError:
                 raise Exception(f"HTTP {resp.status_code}: {resp.text[:100]}")
 
+    @staticmethod
+    def _parse_settings(settings_value) -> Dict[str, Any]:
+        """Parse the inbound ``settings`` value, which may be a JSON string or an already-parsed dict.
+
+        Args:
+            settings_value: The ``settings`` field from an inbound object.
+
+        Returns:
+            Parsed settings dict.
+        """
+        if isinstance(settings_value, dict):
+            return settings_value
+        if isinstance(settings_value, str):
+            return json.loads(settings_value)
+        return {}
+
     def get_clients(self, inbound_id: int) -> List[Dict[str, Any]]:
         """List all clients for a given inbound.
 
@@ -355,7 +382,7 @@ class XUIClient:
             raise Exception(resp_data.get("msg", "Error fetching clients"))
 
         inbound = resp_data["obj"]
-        settings = json.loads(inbound["settings"])
+        settings = self._parse_settings(inbound["settings"])
         return settings.get("clients", [])
 
     def get_inbounds(self) -> List[Dict[str, Any]]:
@@ -397,7 +424,7 @@ class XUIClient:
             raise Exception("Failed to fetch inbound data")
 
         inbound = resp_data["obj"]
-        settings = json.loads(inbound["settings"])
+        settings = self._parse_settings(inbound["settings"])
 
         updated = False
         for client in settings.get("clients", []):

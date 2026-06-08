@@ -15,8 +15,9 @@ Attributes:
     SERVER: Server IP or domain for proxy links.
     DB_PATH: Path to the SQLite database file.
     XUI_BASE_URL: Base URL for 3x-ui panel API.
-    XUI_USERNAME: Username for 3x-ui authentication.
-    XUI_PASSWORD: Password for 3x-ui authentication.
+    XUI_USERNAME: Username for 3x-ui authentication (ignored if ``XUI_API_TOKEN`` is set).
+    XUI_PASSWORD: Password for 3x-ui authentication (ignored if ``XUI_API_TOKEN`` is set).
+    XUI_API_TOKEN: Optional API token for 3x-ui 3.x+ (bypasses login/password).
     XRAY_INBOUND_ID: 3x-ui inbound ID for Xray clients.
     XRAY_SUB_URL_BASE: Base URL for Xray subscription links.
     ADMIN_PASSWORD: Password for web admin panel Basic Auth.
@@ -89,6 +90,7 @@ DB_PATH = os.getenv("DB_PATH", "mtproto_bot.db")
 XUI_BASE_URL = os.getenv("XUI_BASE_URL", "https://mysite.ru")
 XUI_USERNAME = os.getenv("XUI_USERNAME", "admin")
 XUI_PASSWORD = os.getenv("XUI_PASSWORD")
+XUI_API_TOKEN = os.getenv("XUI_API_TOKEN")
 
 XRAY_INBOUND_ID = int(os.getenv("XRAY_INBOUND_ID", "1"))
 XRAY_SUB_URL_BASE = os.getenv("XRAY_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
