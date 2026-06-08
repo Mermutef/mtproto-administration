@@ -76,7 +76,7 @@
                     <a class="variable" href="#XRAY_INBOUND_ID">XRAY_INBOUND_ID</a>
             </li>
             <li>
-                    <a class="variable" href="#XRAY_SUB_URL_BASE">XRAY_SUB_URL_BASE</a>
+                    <a class="variable" href="#XUI_SUB_URL_BASE">XUI_SUB_URL_BASE</a>
             </li>
             <li>
                     <a class="variable" href="#ADMIN_PASSWORD">ADMIN_PASSWORD</a>
@@ -134,7 +134,7 @@ All settings are exposed as module-level constants for easy import.</p>
 <li><strong>XUI_USERNAME:</strong>  Username for 3x-ui authentication.</li>
 <li><strong>XUI_PASSWORD:</strong>  Password for 3x-ui authentication.</li>
 <li><strong>XRAY_INBOUND_ID:</strong>  3x-ui inbound ID for Xray clients.</li>
-<li><strong>XRAY_SUB_URL_BASE:</strong>  Base URL for Xray subscription links.</li>
+<li><strong>XUI_SUB_URL_BASE:</strong>  Base URL for Xray subscription links.</li>
 <li><strong>ADMIN_PASSWORD:</strong>  Password for web admin panel Basic Auth.</li>
 <li><strong>FLASK_PORT:</strong>  Port for the Flask web server.</li>
 <li><strong>MTP_ENABLED:</strong>  Whether MTProto proxy is enabled.</li>
@@ -168,7 +168,7 @@ All settings are exposed as module-level constants for easy import.</p>
 </span><span id="L-18"><a href="#L-18"><span class="linenos">18</span></a><span class="sd">    XUI_USERNAME: Username for 3x-ui authentication.</span>
 </span><span id="L-19"><a href="#L-19"><span class="linenos">19</span></a><span class="sd">    XUI_PASSWORD: Password for 3x-ui authentication.</span>
 </span><span id="L-20"><a href="#L-20"><span class="linenos">20</span></a><span class="sd">    XRAY_INBOUND_ID: 3x-ui inbound ID for Xray clients.</span>
-</span><span id="L-21"><a href="#L-21"><span class="linenos">21</span></a><span class="sd">    XRAY_SUB_URL_BASE: Base URL for Xray subscription links.</span>
+</span><span id="L-21"><a href="#L-21"><span class="linenos">21</span></a><span class="sd">    XUI_SUB_URL_BASE: Base URL for Xray subscription links.</span>
 </span><span id="L-22"><a href="#L-22"><span class="linenos">22</span></a><span class="sd">    ADMIN_PASSWORD: Password for web admin panel Basic Auth.</span>
 </span><span id="L-23"><a href="#L-23"><span class="linenos">23</span></a><span class="sd">    FLASK_PORT: Port for the Flask web server.</span>
 </span><span id="L-24"><a href="#L-24"><span class="linenos">24</span></a><span class="sd">    MTP_ENABLED: Whether MTProto proxy is enabled.</span>
@@ -234,7 +234,7 @@ All settings are exposed as module-level constants for easy import.</p>
 </span><span id="L-84"><a href="#L-84"><span class="linenos">84</span></a><span class="n">XUI_PASSWORD</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;XUI_PASSWORD&quot;</span><span class="p">)</span>
 </span><span id="L-85"><a href="#L-85"><span class="linenos">85</span></a>
 </span><span id="L-86"><a href="#L-86"><span class="linenos">86</span></a><span class="n">XRAY_INBOUND_ID</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;XRAY_INBOUND_ID&quot;</span><span class="p">,</span> <span class="s2">&quot;1&quot;</span><span class="p">))</span>
-</span><span id="L-87"><a href="#L-87"><span class="linenos">87</span></a><span class="n">XRAY_SUB_URL_BASE</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;XRAY_SUB_URL_BASE&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">XUI_BASE_URL</span><span class="si">}</span><span class="s2">/sub/&quot;</span><span class="p">)</span>
+</span><span id="L-87"><a href="#L-87"><span class="linenos">87</span></a><span class="n">XUI_SUB_URL_BASE</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;XUI_SUB_URL_BASE&quot;</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">XUI_BASE_URL</span><span class="si">}</span><span class="s2">/sub/&quot;</span><span class="p">)</span>
 </span><span id="L-88"><a href="#L-88"><span class="linenos">88</span></a>
 </span><span id="L-89"><a href="#L-89"><span class="linenos">89</span></a><span class="n">ADMIN_PASSWORD</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;ADMIN_PASSWORD&quot;</span><span class="p">,</span> <span class="s2">&quot;admin&quot;</span><span class="p">)</span>
 </span><span id="L-90"><a href="#L-90"><span class="linenos">90</span></a><span class="n">FLASK_PORT</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;FLASK_PORT&quot;</span><span class="p">,</span> <span class="mi">5000</span><span class="p">))</span>
@@ -459,14 +459,14 @@ All settings are exposed as module-level constants for easy import.</p>
     
 
                 </section>
-                <section id="XRAY_SUB_URL_BASE">
+                <section id="XUI_SUB_URL_BASE">
                     <div class="attr variable">
-            <span class="name">XRAY_SUB_URL_BASE</span>        =
-<span class="default_value">$XRAY_SUB_URL_BASE</span>
+            <span class="name">XUI_SUB_URL_BASE</span>        =
+<span class="default_value">$XUI_SUB_URL_BASE</span>
 
         
     </div>
-    <a class="headerlink" href="#XRAY_SUB_URL_BASE"></a>
+    <a class="headerlink" href="#XUI_SUB_URL_BASE"></a>
     
     
 

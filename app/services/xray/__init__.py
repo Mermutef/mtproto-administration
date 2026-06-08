@@ -7,7 +7,7 @@ Exports:
 """
 
 from typing import Dict, Any
-from app.config import XRAY_INBOUND_ID, XRAY_SUB_URL_BASE, XRAY_ENABLED
+from app.config import XRAY_INBOUND_ID, XRAY_ENABLED
 from app.services.threexui_base import ThreeXUIService
 
 
@@ -25,10 +25,6 @@ class XrayService(ThreeXUIService):
     @property
     def inbound_id(self) -> int:
         return XRAY_INBOUND_ID
-
-    @property
-    def sub_url_base(self) -> str:
-        return XRAY_SUB_URL_BASE
 
     @property
     def _flow(self) -> str:

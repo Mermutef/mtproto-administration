@@ -15,7 +15,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 import app.db as db
-from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XRAY_SUB_URL_BASE, get_active_protocols, \
+from app.config import ADMIN_GROUP_ID, ADMIN_IDS, DB_PATH, XUI_SUB_URL_BASE, get_active_protocols, \
     USERS_PER_PAGE
 from app.db import get_user_active_keys
 from app.utils import escape_html

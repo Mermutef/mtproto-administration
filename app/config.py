@@ -19,7 +19,7 @@ Attributes:
     XUI_PASSWORD: Password for 3x-ui authentication (ignored if ``XUI_API_TOKEN`` is set).
     XUI_API_TOKEN: Optional API token for 3x-ui 3.x+ (bypasses login/password).
     XRAY_INBOUND_ID: 3x-ui inbound ID for Xray clients.
-    XRAY_SUB_URL_BASE: Base URL for Xray subscription links.
+    XUI_SUB_URL_BASE: Base URL for 3x-ui subscription links.
     ADMIN_PASSWORD: Password for web admin panel Basic Auth.
     FLASK_PORT: Port for the Flask web server.
     MTP_ENABLED: Whether MTProto proxy is enabled.
@@ -93,15 +93,14 @@ XUI_BASE_URL = os.getenv("XUI_BASE_URL", "https://mysite.ru")
 XUI_USERNAME = os.getenv("XUI_USERNAME", "admin")
 XUI_PASSWORD = os.getenv("XUI_PASSWORD")
 XUI_API_TOKEN = os.getenv("XUI_API_TOKEN")
+XUI_SUB_URL_BASE = os.getenv("XUI_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
 
 XRAY_INBOUND_ID = int(os.getenv("XRAY_INBOUND_ID", "1"))
-XRAY_SUB_URL_BASE = os.getenv("XRAY_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
 
+# All 3x-ui protocols share the same subscription system — one sub_id
+# covers all inbounds the client is attached to.
 TROJAN_INBOUND_ID = int(os.getenv("TROJAN_INBOUND_ID", "0"))
-TROJAN_SUB_URL_BASE = os.getenv("TROJAN_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
-
 HYSTERIA2_INBOUND_ID = int(os.getenv("HYSTERIA2_INBOUND_ID", "0"))
-HYSTERIA2_SUB_URL_BASE = os.getenv("HYSTERIA2_SUB_URL_BASE", f"{XUI_BASE_URL}/sub/")
 
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")
 FLASK_PORT = int(os.getenv("FLASK_PORT", 5000))

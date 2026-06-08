@@ -8,7 +8,7 @@ Exports:
 """
 
 from typing import Dict, Any
-from app.config import HYSTERIA2_INBOUND_ID, HYSTERIA2_SUB_URL_BASE, HYSTERIA2_ENABLED
+from app.config import HYSTERIA2_INBOUND_ID, HYSTERIA2_ENABLED
 from app.services.threexui_base import ThreeXUIService
 
 
@@ -27,9 +27,6 @@ class Hysteria2Service(ThreeXUIService):
     def inbound_id(self) -> int:
         return HYSTERIA2_INBOUND_ID
 
-    @property
-    def sub_url_base(self) -> str:
-        return HYSTERIA2_SUB_URL_BASE
 
 
 

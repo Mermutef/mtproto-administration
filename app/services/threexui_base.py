@@ -9,6 +9,7 @@ Exports:
 """
 
 import json
+import secrets
 import sqlite3
 import re
 import logging
@@ -18,9 +19,9 @@ from abc import abstractmethod
 
 from py3xui import Client
 
-from app.config import DB_PATH
+from app.config import DB_PATH, XUI_SUB_URL_BASE
 from app.services.base import BaseVpnService
-from app.x_ui_manager import get_xui, make_client
+from app.x_ui_manager import get_xui, make_client, attach_client_to_inbound
 
 
 class ThreeXUIService(BaseVpnService):
@@ -40,10 +41,9 @@ class ThreeXUIService(BaseVpnService):
     def inbound_id(self) -> int:
         """3x-ui inbound ID for this protocol."""
 
-    @property
-    @abstractmethod
-    def sub_url_base(self) -> str:
-        """Base URL for subscription links."""
+    # All 3x-ui protocols share the same subscription system — one sub_id
+    # covers every inbound the client is attached to.
+    sub_url_base: str = XUI_SUB_URL_BASE
 
     @property
     def _flow(self) -> str:
@@ -89,26 +89,23 @@ class ThreeXUIService(BaseVpnService):
             pass
 
         if existing_client:
-            # Client already exists globally — attach to *this* inbound
-            # by updating the inbound's settings (how GUI "Attached inbounds" works).
+            # Client already exists globally (e.g. in Xray inbound) —
+            # attach the same email+UUID to *this* inbound.
+            # Use raw JSON to avoid Pydantic losing subId on serialisation.
             uuid_str = existing_client.uuid or ""
             sub_id = existing_client.sub_id or ""
 
+            client_dict = {
+                "id": uuid_str,
+                "email": email,
+                "enable": True,
+                "subId": sub_id,
+                "totalGB": 0,
+            }
+            if self._flow:
+                client_dict["flow"] = self._flow
             try:
-                inbound = api.inbound.get_by_id(self.inbound_id)
-                if inbound.settings is None:
-                    return False, "Inbound has no settings"
-
-                # Add the existing client to this inbound's client list
-                new_client = Client(
-                    email=email,
-                    enable=True,
-                    flow=self._flow,
-                    id=uuid_str,
-                    total_gb=0,
-                )
-                inbound.settings.clients.append(new_client)
-                api.inbound.update(self.inbound_id, inbound)
+                attach_client_to_inbound(api, self.inbound_id, client_dict)
             except Exception as e:
                 return False, str(e)
         else:

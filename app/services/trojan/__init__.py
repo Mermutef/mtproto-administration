@@ -7,7 +7,7 @@ Exports:
 """
 
 from typing import Dict, Any
-from app.config import TROJAN_INBOUND_ID, TROJAN_SUB_URL_BASE, TROJAN_ENABLED
+from app.config import TROJAN_INBOUND_ID, TROJAN_ENABLED
 from app.services.threexui_base import ThreeXUIService
 
 
@@ -26,9 +26,6 @@ class TrojanService(ThreeXUIService):
     def inbound_id(self) -> int:
         return TROJAN_INBOUND_ID
 
-    @property
-    def sub_url_base(self) -> str:
-        return TROJAN_SUB_URL_BASE
 
 
 
