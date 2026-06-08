@@ -53,3 +53,17 @@
 
     --bg-lines: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800"><path d="M50,150 Q200,50 400,200 T750,100" stroke="rgba(139,92,246,0.9)" fill="none" stroke-width="3"/><path d="M100,600 Q350,450 600,650 T900,500" stroke="rgba(139,92,246,0.85)" fill="none" stroke-width="3"/><path d="M200,50 Q450,200 550,100 T900,250" stroke="rgba(139,92,246,0.8)" fill="none" stroke-width="3"/><path d="M-50,400 Q200,300 400,500 T800,350" stroke="rgba(139,92,246,0.9)" fill="none" stroke-width="3"/><path d="M150,700 Q400,600 600,750 T950,650" stroke="rgba(139,92,246,0.8)" fill="none" stroke-width="3"/><path d="M300,300 Q500,100 700,300 T1000,150" stroke="rgba(139,92,246,0.85)" fill="none" stroke-width="3"/><path d="M0,250 Q250,400 450,250 T850,400" stroke="rgba(139,92,246,0.9)" fill="none" stroke-width="3"/><path d="M600,100 Q800,300 950,200" stroke="rgba(139,92,246,0.7)" fill="none" stroke-width="2"/><path d="M50,500 Q300,600 500,450 T900,550" stroke="rgba(139,92,246,0.75)" fill="none" stroke-width="2.5"/></svg>');
 }
+
+[data-theme="trojan"] {
+    --theme-primary: #D4A017;
+    --theme-primary-dark: #B8860B;
+    --theme-primary-light: #F0CC5C;
+    --theme-primary-rgb: 212, 160, 23;
+
+    --theme-accent-warning: #EAB308;
+    --theme-accent-warning-dark: #CA8A04;
+    --theme-accent-danger: #EF4444;
+    --theme-accent-danger-dark: #DC2626;
+
+    --bg-lines: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800"><path d="M50,150 Q200,50 400,200 T750,100" stroke="rgba(212,160,23,0.9)" fill="none" stroke-width="3"/><path d="M100,600 Q350,450 600,650 T900,500" stroke="rgba(212,160,23,0.85)" fill="none" stroke-width="3"/><path d="M200,50 Q450,200 550,100 T900,250" stroke="rgba(212,160,23,0.8)" fill="none" stroke-width="3"/><path d="M-50,400 Q200,300 400,500 T800,350" stroke="rgba(212,160,23,0.9)" fill="none" stroke-width="3"/><path d="M150,700 Q400,600 600,750 T950,650" stroke="rgba(212,160,23,0.8)" fill="none" stroke-width="3"/><path d="M300,300 Q500,100 700,300 T1000,150" stroke="rgba(212,160,23,0.85)" fill="none" stroke-width="3"/><path d="M0,250 Q250,400 450,250 T850,400" stroke="rgba(212,160,23,0.9)" fill="none" stroke-width="3"/><path d="M600,100 Q800,300 950,200" stroke="rgba(212,160,23,0.7)" fill="none" stroke-width="2"/><path d="M50,500 Q300,600 500,450 T900,550" stroke="rgba(212,160,23,0.75)" fill="none" stroke-width="2.5"/></svg>');
+}

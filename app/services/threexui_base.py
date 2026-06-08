@@ -108,8 +108,17 @@ class ThreeXUIService(BaseVpnService):
         return True, subscribe_url
 
     def _create_and_get_ids(self, xui: XUIClient, email: str) -> Tuple[str, str]:
-        """Call add_client and return (uuid, sub_id)."""
-        result = xui.add_client(self.inbound_id, email)
+        """Call add_client and return (uuid, sub_id).
+
+        Uses the protocol-specific ``_build_client_payload`` so that
+        e.g. Trojan and Hysteria2 do not get an irrelevant ``flow`` field.
+        """
+        payload = self._build_client_payload(email, uuid_str="", sub_id="")
+        if payload:
+            result = xui.add_client(self.inbound_id, email,
+                                    client_payload=payload)
+        else:
+            result = xui.add_client(self.inbound_id, email)
         return result["uuid"], result["sub_id"]
 
     def delete_user(self, username: str) -> bool:

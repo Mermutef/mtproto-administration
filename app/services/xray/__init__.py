@@ -33,10 +33,8 @@ class XrayService(ThreeXUIService):
     def _build_client_payload(self, email: str, uuid_str: str, sub_id: str) -> dict:
         return {
             "email": email,
-            "id": uuid_str,
             "flow": "xtls-rprx-vision",
             "enable": True,
-            "subId": sub_id,
             "totalGB": 0,
         }
 

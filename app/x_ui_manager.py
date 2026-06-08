@@ -275,14 +275,19 @@ class XUIClient:
         return ""
 
     def add_client(self, inbound_id: int, email: str, uuid_str: Optional[str] = None,
-                   flow: str = "xtls-rprx-vision") -> Dict[str, str]:
-        """Add a new Xray client to the given inbound.
+                   flow: str = "xtls-rprx-vision",
+                   client_payload: Optional[dict] = None) -> Dict[str, str]:
+        """Add a new client to the given inbound.
 
         Args:
             inbound_id: The inbound ID.
             email: Client email (used as identifier).
             uuid_str: Optional UUID; auto-generated if omitted.
-            flow: Xray flow setting.
+            flow: Xray flow setting (only used when ``client_payload`` is None).
+            client_payload: If provided, use this dict as the client settings
+                instead of building the default one.  ``uuid_str`` and ``sub_id``
+                are still returned; they are injected into the payload if not
+                already present.
 
         Returns:
             A dict with ``uuid`` and ``sub_id`` keys.
@@ -297,15 +302,21 @@ class XUIClient:
 
         sub_id = secrets.token_urlsafe(self.SUB_ID_LEN)
 
-        # 3x-ui 3.2.9+ rejects empty tgId — do not include it.
-        client_payload = {
-            "email": email,
-            "id": uuid_str,
-            "flow": flow,
-            "enable": True,
-            "subId": sub_id,
-            "totalGB": 0,
-        }
+        if client_payload is not None:
+            # Use the caller-provided payload, inject id/subId if absent or empty
+            client_payload["id"] = client_payload.get("id") or uuid_str
+            client_payload["subId"] = client_payload.get("subId") or sub_id
+        else:
+            # Default payload for VLESS / Xray
+            client_payload = {
+                "email": email,
+                "id": uuid_str,
+                "flow": flow,
+                "enable": True,
+                "subId": sub_id,
+                "totalGB": 0,
+            }
+
         settings = {"clients": [client_payload]}
 
         resp_data = self._request_json(
