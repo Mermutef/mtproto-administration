@@ -106,6 +106,20 @@ async def mykeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     msg = MESSAGES["my_keys_header"]
     found = False
+
+    # Freshly fetch all keys from the panel for 3x-ui protocols
+    # and merge them into the local DB to fix stale sub_id / missing logins.
+    for proto in get_active_protocols():
+        svc = registry.get(proto)
+        if not svc:
+            continue
+        if hasattr(svc, 'inbound_id') and svc.inbound_id:
+            try:
+                # Refresh local keys from panel (fixes stale sub_id, missing uuid)
+                svc.get_users()
+            except Exception:
+                pass
+
     for proto in get_active_protocols():
         svc = registry.get(proto)
         if not svc:
@@ -115,6 +129,9 @@ async def mykeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             found = True
             login = svc.get_identifier(key)
             link = svc.get_link_for_key(key)
+            # Fix empty login for MTProto
+            if not login and proto == "mtproto":
+                login = key.get('username', '—')
             msg += MESSAGES["my_keys_key"].format(protocol=proto.upper(), login=login, link=link)
     if not found:
         msg = MESSAGES["my_keys_no_keys"]

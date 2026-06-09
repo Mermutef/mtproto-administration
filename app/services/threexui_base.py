@@ -191,6 +191,21 @@ class ThreeXUIService(BaseVpnService):
             db_row = db_map.get(email)
             if db_row:
                 telegram_id, created_at_db, sub_id = db_row
+                # Sync panel sub_id if different (fixes stale per-protocol sub_id)
+                panel_sub_id = c.get("subId") or ""
+                if sub_id and panel_sub_id and sub_id != panel_sub_id:
+                    conn_sync = sqlite3.connect(DB_PATH)
+                    try:
+                        cur_sync = conn_sync.cursor()
+                        cur_sync.execute(
+                            "UPDATE keys SET key_data = json_set(key_data, '$.sub_id', ?) "
+                            "WHERE protocol=? AND json_extract(key_data, '$.email') = ?",
+                            (panel_sub_id, self.protocol_name, email)
+                        )
+                        conn_sync.commit()
+                    finally:
+                        conn_sync.close()
+                    sub_id = panel_sub_id
             else:
                 # Client exists on the panel but not in our DB
                 # (e.g. added via panel GUI, not through bot).
@@ -200,7 +215,6 @@ class ThreeXUIService(BaseVpnService):
                 try:
                     conn2 = sqlite3.connect(DB_PATH)
                     cur2 = conn2.cursor()
-                    # Check if user exists
                     cur2.execute("SELECT id FROM users WHERE username = ?", (email,))
                     user_row = cur2.fetchone()
                     if user_row:
@@ -220,9 +234,6 @@ class ThreeXUIService(BaseVpnService):
                     conn2.close()
                 except Exception:
                     pass
-
-            if not sub_id and c.get("subId"):
-                sub_id = c["subId"]
 
             link = f"{self.sub_url_base}{sub_id}" if sub_id else ""
             created_at = created_at_db or "—"
