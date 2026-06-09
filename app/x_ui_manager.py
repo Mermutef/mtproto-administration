@@ -1,140 +1,220 @@
-"""3x-ui (Xray) panel API client — powered by ``py3xui``.
+"""3x-ui (Xray) panel API client — pure ``requests`` with Bearer auth.
 
-Replaces the old hand-rolled HTTP client with the mature ``py3xui``
-library which handles authentication, session management, CSRF tokens,
-and client/inbound CRUD correctly for 3x-ui 3.x.
+Based on the official 3x-ui 3.2.9 API endpoints found in the Go source
+(``web/controller/client.go``, ``web/controller/api.go``).
 
 Exports:
-    get_xui: Thread-local :class:`py3xui.Api` singleton factory.
-    attach_client_to_inbound: Raw-JSON helper that preserves subId for all clients.
+    XuiApi — Thread-safe API wrapper exposing the operations we need.
 """
 
 import json
 import threading
 import logging
-from typing import Optional
+import secrets
+from typing import Optional, List, Dict, Any
 
-from py3xui import Api, Client
+import requests
 
-from app.config import XUI_BASE_URL, XUI_USERNAME, XUI_PASSWORD, XUI_API_TOKEN
-
-
-_xui_per_thread = threading.local()
+from app.config import XUI_BASE_URL, XUI_API_TOKEN
 
 
-def get_xui() -> Optional[Api]:
-    """Get a thread-local :class:`py3xui.Api` singleton.
+logger = logging.getLogger(__name__)
 
-    Authenticates once per thread; subsequent calls return the cached
-    instance.  If initialisation fails, ``None`` is returned.
 
-    Returns:
-        An :class:`py3xui.Api` instance, or ``None``.
+class XuiApi:
+    """Thin wrapper around the 3x-ui REST API.
+
+    Authentication is done via Bearer token (``XUI_API_TOKEN``).  The
+    token is generated once in the panel GUI (Settings → API Keys) and
+    stored in the ``.env`` file.
+
+    Every public method raises :class:`XuiError` on failure.
     """
-    client = getattr(_xui_per_thread, 'client', None)
-    if client is None:
+
+    def __init__(self, max_retries: int = 2, timeout: int = 30):
+        self.base_url = XUI_BASE_URL.rstrip("/")
+        self.timeout = timeout
+        self.max_retries = max_retries
+
+        self._session = requests.Session()
+        self._session.headers.update({
+            "Authorization": f"Bearer {XUI_API_TOKEN}",
+            "Accept": "application/json",
+        })
+        logger.info("XuiApi initialised (token auth)")
+
+    # ── low-level helpers ──────────────────────────────────────────
+
+    def _url(self, path: str) -> str:
+        return f"{self.base_url}{path}"
+
+    def _request(self, method: str, path: str, **kwargs) -> dict:
+        """Send an HTTP request and return the parsed JSON body.
+
+        Raises:
+            XuiError: On non-200 status or ``success: false`` response.
+        """
+        url = self._url(path)
+        kwargs.setdefault("timeout", self.timeout)
+
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                resp = self._session.request(method, url, **kwargs)
+                if resp.status_code == 401:
+                    raise XuiError("Authentication failed — check XUI_API_TOKEN")
+                if resp.status_code == 404:
+                    raise XuiError(f"Resource not found: {path}")
+                if resp.status_code != 200:
+                    raise XuiError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+                data = resp.json() if resp.text.strip() else {}
+                if not data.get("success"):
+                    msg = data.get("msg", "Unknown error")
+                    raise XuiError(msg)
+                return data
+            except (requests.RequestException, XuiError) as e:
+                last_error = e
+                if attempt < self.max_retries:
+                    logger.warning("API call failed, retrying (%d/%d): %s",
+                                   attempt + 1, self.max_retries, e)
+                    import time
+                    time.sleep(2 ** attempt)
+                    continue
+                raise XuiError(str(last_error)) from last_error
+
+        raise XuiError(str(last_error or "Unknown error"))
+
+    def _get(self, path: str) -> dict:
+        return self._request("GET", path)
+
+    def _post(self, path: str, json_body: dict = None) -> dict:
+        return self._request("POST", path, json=json_body or {})
+
+    # ── Client API ─────────────────────────────────────────────────
+
+    def create_client(self, email: str, inbound_ids: List[int],
+                      enable: bool = True,
+                      flow: str = "",
+                      total_gb: int = 0,
+                      tg_id: str = "") -> Dict[str, Any]:
+        """Create a new client via ``POST /panel/api/clients/add``.
+
+        The panel auto-generates ``id`` (UUID), ``subId``, and protocol-
+        specific fields (``password`` for Trojan, ``auth`` for Hysteria).
+
+        Returns:
+            The response object with ``msg`` and ``obj`` keys.
+        """
+        client = {
+            "email": email,
+            "enable": enable,
+            "totalGB": total_gb,
+            "tgId": tg_id,
+        }
+        if flow:
+            client["flow"] = flow
+
+        payload = {
+            "client": client,
+            "inboundIds": inbound_ids,
+        }
+        return self._post("/panel/api/clients/add", payload)
+
+    def attach_client(self, email: str, inbound_ids: List[int]) -> Dict[str, Any]:
+        """Attach an existing client to additional inbounds.
+
+        ``POST /panel/api/clients/{email}/attach``
+        """
+        return self._post(f"/panel/api/clients/{email}/attach",
+                          {"inboundIds": inbound_ids})
+
+    def detach_client(self, email: str, inbound_ids: List[int]) -> Dict[str, Any]:
+        """Detach a client from specific inbounds (keep in others).
+
+        ``POST /panel/api/clients/{email}/detach``
+        """
+        return self._post(f"/panel/api/clients/{email}/detach",
+                          {"inboundIds": inbound_ids})
+
+    def delete_client(self, email: str, keep_traffic: bool = False) -> Dict[str, Any]:
+        """Delete a client globally (from all inbounds).
+
+        ``POST /panel/api/clients/del/{email}``
+        """
+        qs = "?keepTraffic=1" if keep_traffic else ""
+        return self._post(f"/panel/api/clients/del/{email}{qs}")
+
+    def update_client(self, email: str, client_data: dict,
+                      inbound_ids: List[int] = None) -> Dict[str, Any]:
+        """Update a client's properties by email.
+
+        ``POST /panel/api/clients/update/{email}``
+        """
+        qs = ""
+        if inbound_ids:
+            qs = "?inboundIds=" + ",".join(str(i) for i in inbound_ids)
+        return self._post(f"/panel/api/clients/update/{email}{qs}", client_data)
+
+    def get_client(self, email: str) -> Optional[Dict[str, Any]]:
+        """Get client details by email.
+
+        ``GET /panel/api/clients/get/{email}``
+
+        Returns the ``client`` dict (with keys like ``id``, ``email``,
+        ``subId``, ``enable``, etc.), or ``None`` if not found.
+        """
         try:
-            client = Api(
-                host=XUI_BASE_URL,
-                username=XUI_USERNAME if not XUI_API_TOKEN else None,
-                password=XUI_PASSWORD if not XUI_API_TOKEN else None,
-                token=XUI_API_TOKEN,
-                use_tls_verify=True,
-            )
-            if not XUI_API_TOKEN:
-                client.login()
-            logging.info(f"XUI client initialised (token_auth={bool(XUI_API_TOKEN)})")
-        except Exception as e:
-            logging.error(f"Failed to initialise XUI client: {e}")
-            _xui_per_thread.client = False
-            return None
-        _xui_per_thread.client = client
-    return client if client is not False else None
+            data = self._get(f"/panel/api/clients/get/{email}")
+            obj = data.get("obj", {})
+            return obj.get("client") or obj
+        except XuiError as e:
+            if "not found" in str(e).lower() or "no such" in str(e).lower():
+                return None
+            raise
+
+    def get_clients_list(self) -> List[Dict[str, Any]]:
+        """List all clients panel-wide.
+
+        ``GET /panel/api/clients/list``
+        """
+        data = self._get("/panel/api/clients/list")
+        return data.get("obj", [])
+
+    # ── Inbound API (read-only — needed by get_users) ──────────────
+
+    def get_inbound(self, inbound_id: int) -> Dict[str, Any]:
+        """Get full inbound data including ``settings.clients``.
+
+        ``GET /panel/api/inbounds/get/{id}``
+        """
+        data = self._get(f"/panel/api/inbounds/get/{inbound_id}")
+        return data["obj"]
+
+    def get_inbounds_list(self) -> List[Dict[str, Any]]:
+        """List all inbounds (used for diagnostics).
+
+        ``GET /panel/api/inbounds/list``
+        """
+        data = self._get("/panel/api/inbounds/list")
+        return data.get("obj", [])
+
+    # ── helpers ────────────────────────────────────────────────────
+
+    def ensure_client_attached(self, email: str, inbound_id: int) -> None:
+        """Check if a client exists and attach to *inbound_id* if needed.
+
+        If the client does not exist at all, callers should create it
+        first via :meth:`create_client`.  This method only *attaches*
+        an existing client to an additional inbound (idempotent — safe
+        to call even if already attached).
+        """
+        # A 404 or "not found" here means the client doesn't exist yet.
+        client = self.get_client(email)
+        if client is None:
+            raise XuiError(f"Client '{email}' not found — create it first")
+        # Attach (idempotent; no error if already attached)
+        self.attach_client(email, [inbound_id])
 
 
-def make_client(
-    email: str,
-    enable: bool = True,
-    flow: str = "",
-    tg_id: str = "",
-    total_gb: int = 0,
-    **extra,
-) -> Client:
-    """Build a :class:`py3xui.Client` with the given parameters.
-
-    Args:
-        email: Client email (used as identifier).
-        enable: Whether the client is enabled.
-        flow: Xray flow setting (e.g. ``xtls-rprx-vision`` for VLESS).
-        tg_id: Telegram ID (left empty for new clients).
-        total_gb: Total traffic limit in GB (0 = unlimited).
-        **extra: Any additional fields forwarded to the Client model.
-
-    Returns:
-        A :class:`py3xui.Client` instance.
-    """
-    return Client(
-        email=email,
-        enable=enable,
-        flow=flow,
-        tg_id=tg_id,
-        total_gb=total_gb,
-        **extra,
-    )
-
-
-def attach_client_to_inbound(api: Api, inbound_id: int, client_dict: dict) -> None:
-    """Attach a client to an inbound via raw JSON to preserve subId for existing clients.
-
-    py3xui's Pydantic models can lose ``subId`` during serialisation because
-    the field alias is ``subId`` (camelCase) but the Python attribute is
-    ``sub_id`` (snake_case).  This function bypasses Pydantic entirely:
-    it fetches the inbound as a raw dict, appends the new client, and posts
-    the complete dict back using the same ``requests.Session`` that py3xui
-    configured (with Bearer token / cookie).
-
-    Args:
-        api: An authenticated :class:`py3xui.Api` instance.
-        inbound_id: The inbound to attach the client to.
-        client_dict: A plain Python dict representing the client (keys
-            must use the API's camelCase naming, e.g. ``id``, ``email``,
-            ``subId``).
-
-    Raises:
-        Exception: If any API call fails.
-    """
-    import requests as _requests
-
-    base = XUI_BASE_URL.rstrip("/")
-    session = getattr(api, "_session", None) or _requests.Session()
-
-    # 1. Fetch inbound as raw JSON
-    get_url = f"{base}/panel/api/inbounds/get/{inbound_id}"
-    resp = session.get(get_url, timeout=30, allow_redirects=True)
-    if resp.status_code == 200 and not resp.text.strip():
-        # possibly a re-login redirect — let the session handle it
-        resp = session.get(get_url, timeout=30, allow_redirects=True)
-    if resp.status_code != 200:
-        raise Exception(f"GET inbound failed: {resp.status_code}")
-    data = resp.json()
-    if not data.get("success"):
-        raise Exception(data.get("msg", "Error fetching inbound data"))
-
-    inbound_dict = data["obj"]
-    settings = inbound_dict.get("settings", {})
-    if isinstance(settings, str):
-        settings = json.loads(settings)
-
-    clients = settings.setdefault("clients", [])
-    clients.append(client_dict)
-    settings["clients"] = clients
-    inbound_dict["settings"] = json.dumps(settings, ensure_ascii=False)
-
-    # 2. Update inbound with the full, merged client list
-    update_url = f"{base}/panel/api/inbounds/update/{inbound_id}"
-    resp = session.post(update_url, json=inbound_dict, timeout=30, allow_redirects=True)
-    if resp.status_code != 200:
-        raise Exception(f"Update inbound failed: {resp.status_code} {resp.text[:200]}")
-    data = resp.json()
-    if not data.get("success"):
-        raise Exception(data.get("msg", "Error updating inbound"))
+class XuiError(Exception):
+    """Raised when the 3x-ui API returns an error."""

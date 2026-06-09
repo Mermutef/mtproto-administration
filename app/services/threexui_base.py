@@ -1,15 +1,15 @@
 """Abstract base for all 3x-ui-managed VPN protocols.
 
-Uses the ``py3xui`` library to communicate with the 3x-ui panel API.
-Each subclass only needs to provide metadata and a protocol-specific
-``_flow`` property if needed.
+Uses the official 3x-ui REST API via :class:`XuiApi` (pure ``requests``,
+no external SDKs).
+
+Each subclass only needs to provide metadata.
 
 Exports:
     ThreeXUIService: Abstract base class.
 """
 
 import json
-import secrets
 import sqlite3
 import re
 import logging
@@ -17,11 +17,9 @@ from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 from abc import abstractmethod
 
-from py3xui import Client
-
 from app.config import DB_PATH, XUI_SUB_URL_BASE
 from app.services.base import BaseVpnService
-from app.x_ui_manager import get_xui, make_client, attach_client_to_inbound
+from app.x_ui_manager import XuiApi, XuiError
 
 
 class ThreeXUIService(BaseVpnService):
@@ -31,7 +29,6 @@ class ThreeXUIService(BaseVpnService):
     - :attr:`protocol_name`, :attr:`display_name`, :attr:`emoji`
     - :meth:`enabled`
     - :meth:`inbound_id` (property)
-    - :meth:`sub_url_base` (property)
     """
 
     # ── abstract / subclass-supplied ──────────────────────────────
@@ -41,30 +38,34 @@ class ThreeXUIService(BaseVpnService):
     def inbound_id(self) -> int:
         """3x-ui inbound ID for this protocol."""
 
-    # All 3x-ui protocols share the same subscription system — one sub_id
-    # covers every inbound the client is attached to.
+    # All 3x-ui protocols share the same subscription system —
+    # one sub_id covers every inbound the client is attached to.
     sub_url_base: str = XUI_SUB_URL_BASE
 
     @property
     def _flow(self) -> str:
-        """Xray ``flow`` setting (e.g. ``xtls-rprx-vision`` for VLESS)."""
+        """Xray flow setting (e.g. xtls-rprx-vision for VLESS)."""
         return ""
+
+    @property
+    def _total_gb(self) -> int:
+        """Default traffic limit in GB (0 = unlimited)."""
+        return 0
 
     # ── 3x-ui helpers ────────────────────────────────────────────
 
-    def _get_api(self):
-        """Get a thread-local py3xui.Api instance."""
-        return get_xui()
+    def _get_api(self) -> XuiApi:
+        """Get a thread-local XuiApi instance."""
+        return XuiApi()
 
     # ── CRUD ──────────────────────────────────────────────────────
 
     def create_user(self, username: str, telegram_id: str = "unknown") -> Tuple[bool, str]:
         """Create a client via the 3x-ui API.
 
-        In 3x-ui 3.2.9 email uniqueness is enforced globally across all
-        inbounds.  If a client with the given email already exists (e.g.
-        in the Xray inbound), we re-use its UUID and attach it to *this*
-        inbound instead of creating a duplicate.
+        In 3x-ui 3.2.9, the ``/panel/api/clients/add`` endpoint lets us
+        specify multiple inbound IDs.  If the email already exists, we
+        attach it to *this* inbound via ``/panel/api/clients/{email}/attach``.
 
         Args:
             username: Base name used to generate the email.
@@ -75,70 +76,31 @@ class ThreeXUIService(BaseVpnService):
             (False, error_message) on failure.
         """
         api = self._get_api()
-        if not api:
-            return False, "No connection to 3x-ui"
-
         base_name = re.sub(r'[^a-zA-Z0-9_]', '_', username)
         email = f"{base_name}_{telegram_id}"
 
-        # Check if client already exists globally (in any inbound)
-        existing_client = None
+        # Try to create the client (happens on first-time creation)
         try:
-            existing_client = api.client.get_by_email(email)
-        except Exception:
-            pass
-
-        if existing_client:
-            # Client already exists globally (e.g. in Xray inbound) —
-            # attach the same email+UUID to *this* inbound.
-            # Use raw JSON to avoid Pydantic losing subId on serialisation.
-            uuid_str = existing_client.uuid or ""
-            sub_id = existing_client.sub_id or ""
-
-            client_dict = {
-                "id": uuid_str,
-                "email": email,
-                "enable": True,
-                "subId": sub_id,
-                "totalGB": 0,
-            }
-            if self._flow:
-                client_dict["flow"] = self._flow
-            try:
-                attach_client_to_inbound(api, self.inbound_id, client_dict)
-            except Exception as e:
-                return False, str(e)
-        else:
-            # Fresh client — check this inbound specifically for duplicates
-            try:
-                inbound = api.inbound.get_by_id(self.inbound_id)
-                existing = inbound.settings.clients if inbound.settings else []
-                for c in existing:
-                    if c.email == email:
-                        return False, f"Client with email '{email}' already exists in this inbound"
-            except Exception as e:
-                return False, f"Error checking existing clients: {e}"
-
-            client = make_client(
+            api.create_client(
                 email=email,
-                enable=True,
+                inbound_ids=[self.inbound_id],
                 flow=self._flow,
-                total_gb=0,
+                total_gb=self._total_gb,
             )
-
-            try:
-                api.client.add(self.inbound_id, [client])
-            except Exception as e:
+        except XuiError as e:
+            # If email already exists, attach to this inbound instead
+            if "email" in str(e).lower() and "in use" in str(e).lower():
+                try:
+                    api.attach_client(email, [self.inbound_id])
+                except XuiError as attach_err:
+                    return False, str(attach_err)
+            else:
                 return False, str(e)
 
-            # Fetch back to get uuid and sub_id
-            created = None
-            try:
-                created = api.client.get_by_email(email)
-            except Exception:
-                pass
-            uuid_str = created.id if created else ""
-            sub_id = created.sub_id if created else ""
+        # Fetch client to get uuid and sub_id
+        client_data = api.get_client(email)
+        uuid_str = (client_data or {}).get("id", "") or ""
+        sub_id = (client_data or {}).get("subId", "") or ""
 
         user_id = self._ensure_user_in_db(email, telegram_id)
         key_data = {"email": email, "uuid": uuid_str, "sub_id": sub_id}
@@ -157,7 +119,10 @@ class ThreeXUIService(BaseVpnService):
         return True, subscribe_url
 
     def delete_user(self, username: str) -> bool:
-        """Delete a client from the 3x-ui panel.
+        """Delete a client **only** from this inbound via detach.
+
+        Uses ``POST /panel/api/clients/{email}/detach`` so the client
+        stays alive in other inbounds.
 
         Args:
             username: The client email to delete.
@@ -166,37 +131,37 @@ class ThreeXUIService(BaseVpnService):
             True if the client was removed.
         """
         api = self._get_api()
-        if not api:
-            return False
         email = username
         try:
-            client = api.client.get_by_email(email)
-            if not client or not client.uuid:
-                return False
-            # Use uuid (string) not id (int) — 3x-ui API expects string
-            api.client.delete(self.inbound_id, client.uuid)
-        except Exception as e:
-            logging.error(f"Error removing {self.protocol_name} client {email}: {e}")
+            api.detach_client(email, [self.inbound_id])
+        except XuiError as e:
+            logging.error(f"Error detaching {self.protocol_name} client {email}: {e}")
             return False
         self._revoke_keys(email)
         return True
 
     def get_users(self) -> List[Dict[str, Any]]:
-        """List all clients from the 3x-ui panel with DB metadata.
+        """List all clients in this inbound with DB metadata.
 
         Returns:
             A list of user dicts.
         """
         api = self._get_api()
-        if not api:
-            return []
         try:
-            inbound = api.inbound.get_by_id(self.inbound_id)
-            clients = inbound.settings.clients if inbound.settings else []
-        except Exception:
+            inbound = api.get_inbound(self.inbound_id)
+        except XuiError:
             return []
 
-        emails = [c.email for c in clients if c.email]
+        # Parse settings (may be str or dict)
+        settings = inbound.get("settings", {})
+        if isinstance(settings, str):
+            try:
+                settings = json.loads(settings)
+            except json.JSONDecodeError:
+                return []
+        clients = settings.get("clients", [])
+
+        emails = [c.get("email", "") for c in clients if c.get("email")]
         db_map = {}
         if emails:
             conn = sqlite3.connect(DB_PATH)
@@ -219,9 +184,9 @@ class ThreeXUIService(BaseVpnService):
 
         data = []
         for c in clients:
-            email = c.email or ""
-            uuid_str = c.id or ""
-            enable = c.enable
+            email = c.get("email", "")
+            uuid_str = c.get("id", "")
+            enable = c.get("enable", True)
 
             db_row = db_map.get(email)
             if db_row:
@@ -229,19 +194,8 @@ class ThreeXUIService(BaseVpnService):
             else:
                 telegram_id, created_at_db, sub_id = "—", None, None
 
-            if not sub_id and c.sub_id:
-                sub_id = c.sub_id
-                conn = sqlite3.connect(DB_PATH)
-                try:
-                    cur = conn.cursor()
-                    cur.execute(
-                        "UPDATE keys SET key_data = json_set(key_data, '$.sub_id', ?) "
-                        "WHERE protocol=? AND json_extract(key_data, '$.email') = ?",
-                        (sub_id, self.protocol_name, email)
-                    )
-                    conn.commit()
-                finally:
-                    conn.close()
+            if not sub_id and c.get("subId"):
+                sub_id = c["subId"]
 
             link = f"{self.sub_url_base}{sub_id}" if sub_id else ""
             created_at = created_at_db or "—"
@@ -261,22 +215,22 @@ class ThreeXUIService(BaseVpnService):
     def rename_user(self, old_username: str, new_username: str) -> Tuple[bool, str]:
         """Rename a client in both 3x-ui and the database."""
         api = self._get_api()
-        if not api:
-            return False, "3x-ui unavailable"
-
         try:
-            client = api.client.get_by_email(old_username)
-        except Exception as e:
-            return False, f"Failed to fetch clients: {e}"
+            client = api.get_client(old_username)
+        except XuiError as e:
+            return False, f"Failed to fetch client: {e}"
+
         if not client:
             return False, f"Client {old_username} not found"
 
-        client.email = new_username
+        # Update email in the panel
+        client["email"] = new_username
         try:
-            api.client.update(client.uuid, client)
-        except Exception as e:
+            api.update_client(old_username, client)
+        except XuiError as e:
             return False, f"Update error: {e}"
 
+        # Update DB
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute("UPDATE users SET username = ? WHERE username = ?", (new_username, old_username))
