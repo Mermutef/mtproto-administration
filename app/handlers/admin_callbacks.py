@@ -19,6 +19,8 @@ async def handle_approve(query, data, context):
     """Approve a pending access request.
 
     Creates a VPN key for the user and notifies them in private chat.
+    If the key creation fails, the request stays **pending** and the
+    admin gets retry buttons instead of a dead-end error message.
 
     Args:
         query: The callback query.
@@ -43,7 +45,16 @@ async def handle_approve(query, data, context):
         await _send_key_to_user(context, int(uid), protocol, user_name, result)
         await query.edit_message_text(MESSAGES["approve_request_success"].format(req_id=req_id))
     else:
-        await query.edit_message_text(MESSAGES["approve_request_error"].format(error=result))
+        # Keep the request pending — show retry buttons
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Повторить", callback_data=f"approve_{req_id}")],
+            [InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{req_id}")],
+        ])
+        await query.edit_message_text(
+            MESSAGES["approve_request_retry"].format(error=result, req_id=req_id),
+            reply_markup=keyboard,
+        )
 
 
 async def handle_reject(query, data, context):
@@ -84,15 +95,15 @@ async def handle_revoke_mtproto(query, data, context):
 
 
 async def handle_revoke_xray(query, data, context):
-    """Revoke an Xray key.
+    """Revoke a 3x-ui managed key (Xray / Trojan / Hysteria2).
 
     Args:
         query: The callback query.
-        data: Callback data (``revoke_xray_<email>``).
+        data: Callback data (``revoke_{protocol}_{email}``).
         context: Bot context.
     """
     parts = data.split("_", 2)
-    protocol = parts[0].replace("revoke_", "")
+    protocol = parts[1]  # "xray", "trojan", "hysteria2"
     email = parts[2]
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()

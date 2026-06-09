@@ -188,6 +188,11 @@ MESSAGES = {
     "revoke_canceled": "❎ Отзыв отменён.",
     "key_revoked_notification": "⚠️ Ваш ключ был отозван администратором.",
     "approve_request_success": "✅ Заявка #{req_id} одобрена. Ключ отправлен пользователю.",
+    "approve_request_retry": (
+        "❌ Ошибка создания ключа: {error}\n\n"
+        "Заявка #{req_id} остаётся в статусе «ожидает». "
+        "Вы можете повторить попытку или отклонить заявку."
+    ),
     "approve_request_error": "❌ Ошибка создания ключа: {error}",
     "reject_request_success": "❌ Заявка #{req_id} отклонена.",
     "request_already_processed": "❌ Заявка уже обработана.",

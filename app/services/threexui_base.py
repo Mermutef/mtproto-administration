@@ -192,7 +192,34 @@ class ThreeXUIService(BaseVpnService):
             if db_row:
                 telegram_id, created_at_db, sub_id = db_row
             else:
+                # Client exists on the panel but not in our DB
+                # (e.g. added via panel GUI, not through bot).
+                # Auto-sync: create a key record so /mykeys works.
                 telegram_id, created_at_db, sub_id = "—", None, None
+                sub_id = c.get("subId") or ""
+                try:
+                    conn2 = sqlite3.connect(DB_PATH)
+                    cur2 = conn2.cursor()
+                    # Check if user exists
+                    cur2.execute("SELECT id FROM users WHERE username = ?", (email,))
+                    user_row = cur2.fetchone()
+                    if user_row:
+                        user_id_sync = user_row[0]
+                    else:
+                        cur2.execute(
+                            "INSERT INTO users (username, telegram_id, created_at) VALUES (?, ?, ?)",
+                            (email, "—", datetime.now().isoformat()),
+                        )
+                        user_id_sync = cur2.lastrowid
+                    key_data_sync = {"email": email, "uuid": uuid_str, "sub_id": sub_id}
+                    cur2.execute(
+                        "INSERT OR IGNORE INTO keys (user_id, protocol, key_data, created_at) VALUES (?, ?, ?, ?)",
+                        (user_id_sync, self.protocol_name, json.dumps(key_data_sync), datetime.now().isoformat()),
+                    )
+                    conn2.commit()
+                    conn2.close()
+                except Exception:
+                    pass
 
             if not sub_id and c.get("subId"):
                 sub_id = c["subId"]

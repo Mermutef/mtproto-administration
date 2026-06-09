@@ -96,11 +96,16 @@ class XuiApi:
                       enable: bool = True,
                       flow: str = "",
                       total_gb: int = 0,
-                      tg_id: str = "") -> Dict[str, Any]:
+                      tg_id: int = 0) -> Dict[str, Any]:
         """Create a new client via ``POST /panel/api/clients/add``.
 
         The panel auto-generates ``id`` (UUID), ``subId``, and protocol-
         specific fields (``password`` for Trojan, ``auth`` for Hysteria).
+
+        Note:
+            ``tgId`` must be an integer (int64 in Go).  An empty string
+            will cause a JSON unmarshalling error.  We omit the field
+            entirely when it is 0.
 
         Returns:
             The response object with ``msg`` and ``obj`` keys.
@@ -109,8 +114,9 @@ class XuiApi:
             "email": email,
             "enable": enable,
             "totalGB": total_gb,
-            "tgId": tg_id,
         }
+        if tg_id:
+            client["tgId"] = tg_id
         if flow:
             client["flow"] = flow
 
