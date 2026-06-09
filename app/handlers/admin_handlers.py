@@ -278,13 +278,20 @@ async def users_show_page(update_or_query, context: ContextTypes.DEFAULT_TYPE, p
     for uname, tid, created in page_users:
         buttons.append([InlineKeyboardButton(uname, callback_data=f"user_info_{uname}")])
 
-    nav = []
+    # Navigation row: always show both prev and next when applicable
+    nav_btns = []
     if page > 0:
-        nav.append(InlineKeyboardButton(MESSAGES["pagination_prev"], callback_data=f"users_page_{protocol}_{page - 1}"))
+        nav_btns.append(InlineKeyboardButton(
+            MESSAGES["pagination_prev"],
+            callback_data=f"users_page_{protocol}_{page - 1}",
+        ))
     if page < total_pages - 1:
-        nav.append(InlineKeyboardButton(MESSAGES["pagination_next"], callback_data=f"users_page_{protocol}_{page + 1}"))
-    if nav:
-        buttons.append(nav)
+        nav_btns.append(InlineKeyboardButton(
+            MESSAGES["pagination_next"],
+            callback_data=f"users_page_{protocol}_{page + 1}",
+        ))
+    if nav_btns:
+        buttons.append(nav_btns)
 
     text = MESSAGES["users_page"].format(protocol=protocol.upper(), page=page + 1, total_pages=total_pages)
     await update_or_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="HTML")
