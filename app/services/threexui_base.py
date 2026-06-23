@@ -34,22 +34,18 @@ class ThreeXUIService(BaseVpnService):
 
     @staticmethod
     def _guess_existing_email(base_name: str, telegram_id: str) -> str:
-        """Try to find an existing user in DB whose username matches.
+        """Try to find an existing user in DB by telegram_id.
 
-        If the *base_name* ends with the *telegram_id* (i.e. was
-        previously stored as ``name_telegramID_telegramID``), return
-        the stored username from the database.
+        If a user with this telegram_id already exists (from another
+        protocol), we reuse that email to avoid creating duplicates
+        like ``name_1234_1234``.
         """
         if not telegram_id or telegram_id in ('unknown', 'web', '—'):
             return ""
-        # Check if there's a user whose username starts with base_name
-        # and ends with _telegramId → name_tgid_tgid (double suffix)
-        # or name_tgid (single suffix)
-        cand = f"{base_name}_{telegram_id}"
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        # Check if email as name_tgid already exists
-        c.execute("SELECT username FROM users WHERE username = ?", (cand,))
+        # Find existing user with this telegram_id
+        c.execute("SELECT username FROM users WHERE telegram_id = ?", (telegram_id,))
         row = c.fetchone()
         conn.close()
         if row:
@@ -102,10 +98,17 @@ class ThreeXUIService(BaseVpnService):
         """
         api = self._get_api()
         base_name = sanitize_username(username)
+        # Strip misleading suffixes that would double up
+        if base_name.endswith('_web') or base_name.endswith('_unknown'):
+            base_name = base_name.rsplit('_', 1)[0]
         if email := self._guess_existing_email(base_name, telegram_id):
             pass  # use guessed email
         else:
-            email = f"{base_name}_{telegram_id}"
+            # Don't append 'web' or 'unknown' as email suffix
+            if telegram_id in ('web', 'unknown', '—', '', None):
+                email = base_name
+            else:
+                email = f"{base_name}_{telegram_id}"
 
         # Try to create the client (happens on first-time creation)
         try:
