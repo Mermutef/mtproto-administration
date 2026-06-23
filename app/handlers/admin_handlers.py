@@ -157,7 +157,17 @@ async def _create_key_for_identifier(
             await _reply_safe(MESSAGES["empty_username"])
             return False
 
-        success, link = svc.create_user(proxy_username, telegram_id="web")
+        # Try to find existing user in DB to preserve telegram_id
+        tid = "web"
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        c.execute("SELECT telegram_id FROM users WHERE username = ?", (proxy_username,))
+        row = c.fetchone()
+        conn.close()
+        if row and row[0] not in ('unknown', 'web', '—', None):
+            tid = row[0]
+
+        success, link = svc.create_user(proxy_username, telegram_id=tid)
         if success:
             admin_msg = svc.format_admin_direct_message(proxy_username, link)
             await _reply_safe(admin_msg)

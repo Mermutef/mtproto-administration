@@ -20,6 +20,7 @@ from abc import abstractmethod
 from app.config import DB_PATH, XUI_SUB_URL_BASE
 from app.services.base import BaseVpnService
 from app.x_ui_manager import XuiApi, XuiError
+from app.utils import sanitize_username
 
 
 class ThreeXUIService(BaseVpnService):
@@ -30,6 +31,30 @@ class ThreeXUIService(BaseVpnService):
     - :meth:`enabled`
     - :meth:`inbound_id` (property)
     """
+
+    @staticmethod
+    def _guess_existing_email(base_name: str, telegram_id: str) -> str:
+        """Try to find an existing user in DB whose username matches.
+
+        If the *base_name* ends with the *telegram_id* (i.e. was
+        previously stored as ``name_telegramID_telegramID``), return
+        the stored username from the database.
+        """
+        if not telegram_id or telegram_id in ('unknown', 'web', '—'):
+            return ""
+        # Check if there's a user whose username starts with base_name
+        # and ends with _telegramId → name_tgid_tgid (double suffix)
+        # or name_tgid (single suffix)
+        cand = f"{base_name}_{telegram_id}"
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+        # Check if email as name_tgid already exists
+        c.execute("SELECT username FROM users WHERE username = ?", (cand,))
+        row = c.fetchone()
+        conn.close()
+        if row:
+            return row[0]
+        return ""
 
     # ── abstract / subclass-supplied ──────────────────────────────
 
@@ -76,8 +101,11 @@ class ThreeXUIService(BaseVpnService):
             (False, error_message) on failure.
         """
         api = self._get_api()
-        base_name = re.sub(r'[^a-zA-Z0-9_]', '_', username)
-        email = f"{base_name}_{telegram_id}"
+        base_name = sanitize_username(username)
+        if email := self._guess_existing_email(base_name, telegram_id):
+            pass  # use guessed email
+        else:
+            email = f"{base_name}_{telegram_id}"
 
         # Try to create the client (happens on first-time creation)
         try:
