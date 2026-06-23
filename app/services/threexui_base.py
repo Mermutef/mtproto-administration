@@ -337,10 +337,17 @@ class ThreeXUIService(BaseVpnService):
         if not client:
             return False, f"Client {old_username} not found"
 
-        # Update email in the panel
-        client["email"] = new_username
+        # Build a clean payload — remove fields that trip up the Go JSON decoder
+        upd = {"email": new_username, "enable": True}
+        if client.get("flow"):
+            upd["flow"] = client["flow"]
+        if client.get("subId"):
+            upd["subId"] = client["subId"]
+        if client.get("totalGB"):
+            upd["totalGB"] = client["totalGB"]
+
         try:
-            api.update_client(old_username, client)
+            api.update_client(old_username, upd)
         except XuiError as e:
             return False, f"Update error: {e}"
 

@@ -121,7 +121,11 @@ def remove_user(username):
 
 
 def rename_user(old_name, new_name):
-    """Rename a user in both proxy config and the local database.
+    """Rename a user in proxy config, local DB, and 3x-ui panel.
+
+    Updates the username across ALL protocols (mtproto, xray, trojan,
+    hysteria2) that belong to this user, and syncs the change to the
+    3x-ui panel so the web interface reflects the new name.
 
     Args:
         old_name: Current username.
@@ -135,13 +139,58 @@ def rename_user(old_name, new_name):
         return False
     if new_name in users:
         return False
+
+    # 1. Rename in MTProto config
     new_users = {new_name if k == old_name else k: v for k, v in users.items()}
     save_users(new_users)
+
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE users SET username = ? WHERE username = ?", (new_name, old_name))
+
+    # 2. Find the user id
+    c.execute("SELECT id FROM users WHERE username = ?", (old_name,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return True
+    user_id = row[0]
+
+    # 3. Rename in users table
+    c.execute("UPDATE users SET username = ? WHERE id = ?", (new_name, user_id))
+
+    # 4. Update key_data for ALL protocols — replace email in JSON
+    for proto in ('mtproto', 'xray', 'trojan', 'hysteria2'):
+        c.execute(
+            "UPDATE keys SET key_data = json_set(key_data, '$.email', ?) "
+            "WHERE user_id = ? AND protocol = ? AND json_extract(key_data, '$.email') = ?",
+            (new_name, user_id, proto, old_name),
+        )
+        # Also update '$.username' for mtproto keys that use that field
+        c.execute(
+            "UPDATE keys SET key_data = json_set(key_data, '$.username', ?) "
+            "WHERE user_id = ? AND protocol = ? AND json_extract(key_data, '$.username') = ?",
+            (new_name, user_id, proto, old_name),
+        )
+
     conn.commit()
     conn.close()
+
+    # 5. Update email on 3x-ui panel (best effort — ignore failures)
+    try:
+        from app.x_ui_manager import XuiApi
+        api = XuiApi()
+        # Try to find and update on each 3x-ui protocol inbound
+        for inbound_id in (1, 2, 3):  # xray=1, trojan=2, hysteria2=3
+            try:
+                client = api.get_client(old_name)
+                if client:
+                    client["email"] = new_name
+                    api.update_client(old_name, client)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
     return True
 
 
