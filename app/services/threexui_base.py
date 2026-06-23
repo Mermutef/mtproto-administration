@@ -140,6 +140,22 @@ class ThreeXUIService(BaseVpnService):
         self._revoke_keys(email)
         return True
 
+    def _get_client_uuid(self, email: str) -> str:
+        """Fetch the real UUID from the panel client record.
+
+        Uses the ``uuid`` field (not ``id``, which is the internal
+        auto-increment integer).  Falls back to empty string if not
+        available.
+        """
+        try:
+            api = self._get_api()
+            client = api.get_client(email)
+            if client:
+                return client.get("uuid") or ""
+        except Exception:
+            pass
+        return ""
+
     def get_users(self) -> List[Dict[str, Any]]:
         """List all clients in this inbound with DB metadata.
 
@@ -191,6 +207,24 @@ class ThreeXUIService(BaseVpnService):
             db_row = db_map.get(email)
             if db_row:
                 telegram_id, created_at_db, sub_id = db_row
+                # Sync panel uuid if missing (Trojan / Hysteria2 inbound
+                # settings don't always include the ``id`` field).
+                if not uuid_str:
+                    uuid_str = self._get_client_uuid(email)
+                    if uuid_str:
+                        # Persist fetched uuid to DB so /mykeys, /info etc. work
+                        conn_uuid = sqlite3.connect(DB_PATH)
+                        try:
+                            cur_uuid = conn_uuid.cursor()
+                            cur_uuid.execute(
+                                "UPDATE keys SET key_data = json_set(key_data, '$.uuid', ?) "
+                                "WHERE protocol=? AND json_extract(key_data, '$.email') = ?",
+                                (uuid_str, self.protocol_name, email)
+                            )
+                            conn_uuid.commit()
+                        finally:
+                            conn_uuid.close()
+
                 # Sync panel sub_id if different (fixes stale per-protocol sub_id)
                 panel_sub_id = c.get("subId") or ""
                 if sub_id and panel_sub_id and sub_id != panel_sub_id:
@@ -212,6 +246,20 @@ class ThreeXUIService(BaseVpnService):
                 # Auto-sync: create a key record so /mykeys works.
                 telegram_id, created_at_db, sub_id = "—", None, None
                 sub_id = c.get("subId") or ""
+                if not uuid_str:
+                    uuid_str = self._get_client_uuid(email)
+                    if uuid_str:
+                        conn_uuid = sqlite3.connect(DB_PATH)
+                        try:
+                            cur_uuid = conn_uuid.cursor()
+                            cur_uuid.execute(
+                                "UPDATE keys SET key_data = json_set(key_data, '$.uuid', ?) "
+                                "WHERE protocol=? AND json_extract(key_data, '$.email') = ?",
+                                (uuid_str, self.protocol_name, email)
+                            )
+                            conn_uuid.commit()
+                        finally:
+                            conn_uuid.close()
                 try:
                     conn2 = sqlite3.connect(DB_PATH)
                     cur2 = conn2.cursor()
