@@ -12,6 +12,49 @@ from datetime import datetime
 from app.config import DB_PATH
 
 
+def migrate_v1_to_v2():
+    """Migrate database schema from v1 to v2.
+
+    Adds ``updated_at`` and ``processed_by`` columns, creates the
+    ``web_ui_settings`` table, and normalises existing key_data.
+    Safe to run multiple times (idempotent).
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    def col_exists(table, col):
+        c.execute("PRAGMA table_info(%s)" % table)
+        return col in [row[1] for row in c.fetchall()]
+
+    # 1. Add updated_at to users (nullable — SQLite < 3.37 doesn't
+    #    support DEFAULT expressions in ALTER TABLE).
+    if not col_exists('users', 'updated_at'):
+        c.execute("ALTER TABLE users ADD COLUMN updated_at TEXT")
+        c.execute("UPDATE users SET updated_at = COALESCE(created_at, datetime('now')) WHERE updated_at IS NULL")
+
+    # 2. Add updated_at to keys
+    if not col_exists('keys', 'updated_at'):
+        c.execute("ALTER TABLE keys ADD COLUMN updated_at TEXT")
+        c.execute("UPDATE keys SET updated_at = COALESCE(created_at, datetime('now')) WHERE updated_at IS NULL")
+
+    # 3. Add updated_at and processed_by to requests
+    if not col_exists('requests', 'updated_at'):
+        c.execute("ALTER TABLE requests ADD COLUMN updated_at TEXT")
+        c.execute("UPDATE requests SET updated_at = COALESCE(created_at, datetime('now')) WHERE updated_at IS NULL")
+    if not col_exists('requests', 'processed_by'):
+        c.execute("ALTER TABLE requests ADD COLUMN processed_by TEXT")
+
+    # 4. Create web_ui_settings table
+    c.execute('''CREATE TABLE IF NOT EXISTS web_ui_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )''')
+
+    conn.commit()
+    conn.close()
+
+
 def init_db():
     """Initialize the database schema.
 

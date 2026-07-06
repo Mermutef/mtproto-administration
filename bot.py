@@ -20,6 +20,7 @@ from app.handlers.admin_handlers import broadcast_command, sendto_command, cache
 def main():
     """Initialise and start the Telegram bot."""
     db.init_db()
+    db.migrate_v1_to_v2()
     mtproto_service.sync_all_users()
 
     app = Application.builder().token(TOKEN).build()
