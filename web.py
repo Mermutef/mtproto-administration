@@ -31,9 +31,6 @@ from app.config import (
     get_active_protocols
 )
 import app.db as db
-
-# Apply DB migrations on startup
-db.migrate_v1_to_v2()
 from app.web import register_all_blueprints
 
 app = Flask(__name__, template_folder='app/templates', static_folder='app/static')
@@ -115,13 +112,6 @@ def filter_noisy():
 
 # ─── register modular Blueprints for all services ───────────────────
 register_all_blueprints(app, auth_decorator=auth_required)
-
-# Register unified Panel Blueprint with auth
-from app.web.panel import bp as panel_bp
-for name, func in list(panel_bp.view_functions.items()):
-    wrapped = auth_required(func)
-    panel_bp.view_functions[name] = wrapped
-app.register_blueprint(panel_bp)
 
 
 # ─── panel pages ────────────────────────────────────────────────────

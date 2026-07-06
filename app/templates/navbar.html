@@ -1,24 +1,64 @@
-<ul class="navbar-nav me-auto">
-    <li class="nav-item">
-        <a class="nav-link active" href="#" onclick="showTab('users'); return false;" id="nav-users">
-            <i class="bi bi-people"></i> Пользователи
+<nav class="navbar navbar-expand-lg mb-4">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+            <i class="bi bi-diagram-3"></i> OurAdmin
         </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" href="#" onclick="showTab('requests'); return false;" id="nav-requests">
-            <i class="bi bi-inbox"></i> Заявки
-        </a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link" href="#" onclick="showTab('broadcast'); return false;" id="nav-broadcast">
-            <i class="bi bi-megaphone"></i> Рассылка
-        </a>
-    </li>
-</ul>
-<ul class="navbar-nav ms-auto">
-    <li class="nav-item">
-        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#addUserModal">
-            <i class="bi bi-person-plus"></i> Добавить
-        </a>
-    </li>
-</ul>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
+            <ul class="navbar-nav me-auto">
+                {% if "mtproto" in active_protocols %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('mtproto_panel') }}">
+                        <i class="bi bi-shield-lock"></i> MTProto
+                    </a>
+                </li>
+                {% endif %}
+                {% if "xray" in active_protocols %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('xray_panel') }}">
+                        <i class="bi bi-cloud-arrow-up"></i> Xray
+                    </a>
+                </li>
+                {% endif %}
+                {% if "trojan" in active_protocols %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('trojan_panel') }}">
+                        <i class="bi bi-shield-check"></i> Trojan
+                    </a>
+                </li>
+                {% endif %}
+                {% if "hysteria2" in active_protocols %}
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('hysteria2_panel') }}">
+                        <i class="bi bi-lightning-charge"></i> Hysteria2
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+            <ul class="navbar-nav ms-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#addUserModal">
+                        <i class="bi bi-person-plus"></i> Новый пользователь
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#broadcastModal">
+                        <i class="bi bi-megaphone"></i> Рассылка
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#sendToModal">
+                        <i class="bi bi-chat-dots"></i> Личное сообщение
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link link-danger" href="#" id="restartServerBtn">
+                        <i class="bi bi-exclamation-triangle"></i> Перезагрузить сервер
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>

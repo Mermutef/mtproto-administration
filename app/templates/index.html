@@ -3,71 +3,71 @@
 {% set favicon = "favicon.svg" %}
 {% block title %}OurAdmin panel{% endblock %}
 
-{% block additionalCSS %}
-    <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.22.1/dist/bootstrap-table.min.css">
-{% endblock %}
-
 {% block content %}
-{# ── Users Tab ──────────────────────────────────────────────────── #}
-<div id="tab-users">
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-people"></i> Пользователи</h5>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-wrapper m-2">
-                <table id="users-table"
-                       data-toggle="table"
-                       data-pagination="true"
-                       data-page-size="10"
-                       data-page-list="[10,20,50,100,200]"
-                       data-search="true"
-                       data-side-pagination="client"
-                       data-striped="true"
-                       data-sort-name="username"
-                       data-sort-order="asc"
-                       class="table mb-0 table-hover">
-                    <thead>
-                        <tr>
-                            <th data-field="username" data-sortable="true">Логин</th>
-                            <th data-field="protocols" data-formatter="protocolsFormatter">Протоколы</th>
-                            <th data-field="telegram_id" data-sortable="true" data-formatter="tgIDFormatter">TG ID</th>
-                            <th data-field="created_at" data-sortable="true" data-formatter="dateFormatter">Создан</th>
-                            <th data-field="actions" data-formatter="actionsFormatter">Действия</th>
-                        </tr>
-                    </thead>
-                </table>
+<div class="row justify-content-center mt-5">
+    <div class="col-md-10">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-diagram-3"></i> Панель управления VPN</h5>
+            </div>
+            <div class="card-body">
+                <p class="lead text-center mb-4">Выберите протокол для управления:</p>
+                <div class="row g-4">
+                    {% if "mtproto" in active_protocols %}
+                    <div class="col-md-4">
+                        <a href="{{ url_for('mtproto_panel') }}" class="text-decoration-none">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-shield-lock fs-1" style="color: var(--theme-primary)"></i>
+                                    <h5 class="mt-3">MTProto</h5>
+                                    <p class="text-muted small">Прокси для Telegram</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% if "xray" in active_protocols %}
+                    <div class="col-md-4">
+                        <a href="{{ url_for('xray_panel') }}" class="text-decoration-none">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-cloud-arrow-up fs-1" style="color: var(--theme-primary)"></i>
+                                    <h5 class="mt-3">Xray</h5>
+                                    <p class="text-muted small">VLESS Reality</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% if "trojan" in active_protocols %}
+                    <div class="col-md-4">
+                        <a href="{{ url_for('trojan_panel') }}" class="text-decoration-none">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-shield-check fs-1" style="color: var(--theme-primary)"></i>
+                                    <h5 class="mt-3">Trojan</h5>
+                                    <p class="text-muted small">Безопасный TLS</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    {% endif %}
+                    {% if "hysteria2" in active_protocols %}
+                    <div class="col-md-4">
+                        <a href="{{ url_for('hysteria2_panel') }}" class="text-decoration-none">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="bi bi-lightning-charge fs-1" style="color: var(--theme-primary)"></i>
+                                    <h5 class="mt-3">Hysteria2</h5>
+                                    <p class="text-muted small">Скоростной UDP</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
 </div>
-
-{# ── Requests Tab ───────────────────────────────────────────────── #}
-<div id="tab-requests" class="d-none">
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-inbox"></i> Заявки</h5>
-        </div>
-        <div class="card-body">
-            <p class="text-center text-muted py-5">Загрузка заявок...</p>
-        </div>
-    </div>
-</div>
-
-{# ── Broadcast Tab ───────────────────────────────────────────────── #}
-<div id="tab-broadcast" class="d-none">
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-megaphone"></i> Рассылка</h5>
-        </div>
-        <div class="card-body">
-            <p class="text-center text-muted py-5">Скоро...</p>
-        </div>
-    </div>
-</div>
-{% endblock %}
-
-{% block additionalJS %}
-    <script src="https://unpkg.com/bootstrap-table@1.22.1/dist/bootstrap-table.min.js"></script>
-    <script src="{{ url_for('static', filename='js/panel.js') }}"></script>
 {% endblock %}
